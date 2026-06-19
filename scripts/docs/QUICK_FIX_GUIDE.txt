@@ -1,0 +1,174 @@
+================================================================================
+  PYTHON 3.12 COMPLETE SETUP - QUICK FIX GUIDE
+================================================================================
+
+PROBLEM: "Python was not found; run without arguments to install from the 
+         Microsoft Store, or disable this shortcut from Settings"
+
+SOLUTION: Complete Python reinstall with proper environment setup
+
+================================================================================
+  3-STEP SOLUTION
+================================================================================
+
+STEP 1: RUN SETUP SCRIPT
+-------------------------
+1. Find file: scripts\RUN_ME_AS_ADMIN.bat
+2. RIGHT-CLICK on it
+3. Select: "Run as administrator"
+4. Wait for it to complete (5-10 minutes)
+
+STEP 2: DISABLE APP EXECUTION ALIASES
+--------------------------------------
+1. Press: Win + I (opens Settings)
+2. Navigate to: Apps > Advanced app settings > App execution aliases
+3. Find these toggles and turn them OFF:
+   - python.exe
+   - python3.exe
+4. Close Settings
+
+STEP 3: RESTART COMPUTER
+-------------------------
+1. Save all work
+2. Restart your computer
+3. THIS IS REQUIRED for PATH changes to work!
+
+================================================================================
+  AFTER RESTART - VERIFY
+================================================================================
+
+Open PowerShell and run:
+    .\scripts\verify_setup.ps1
+
+This will check if everything is working.
+
+Expected output:
+    ✓ PASS: Python 3.12.8
+    ✓ PASS: pip working
+    ✓ PASS: All tests passed
+
+================================================================================
+  START DJANGO SERVER
+================================================================================
+
+After verification passes:
+
+1. Open PowerShell in project folder
+2. Run these commands:
+
+    .\venv\Scripts\activate
+    python manage.py runserver
+
+3. Server will start at: http://127.0.0.1:8000
+
+================================================================================
+  IF SETUP FAILS
+================================================================================
+
+Try cleanup first, then setup again:
+
+1. Run as Admin: scripts\cleanup_python_simple.ps1
+2. Disable App Execution Aliases (Step 2 above)
+3. Restart computer
+4. Run setup again: scripts\RUN_ME_AS_ADMIN.bat
+
+================================================================================
+  MANUAL INSTALLATION (IF SCRIPT FAILS)
+================================================================================
+
+1. Download Python:
+   - Go to: https://www.python.org/downloads/
+   - Download: Python 3.12.8 (64-bit)
+
+2. Run installer with these options:
+   ✓ Install for all users
+   ✓ Add Python to PATH
+   ✓ Install pip
+   - Install location: C:\Python312
+
+3. Disable App Execution Aliases (see Step 2 above)
+
+4. Restart computer
+
+5. Create virtual environment:
+   python -m venv venv
+
+6. Activate and install:
+   .\venv\Scripts\activate
+   pip install -r requirements.txt
+
+================================================================================
+  COMMON ISSUES
+================================================================================
+
+ISSUE: "python: command not found" after restart
+FIX:
+  - Open a NEW PowerShell window
+  - Check: python --version
+  - If still fails, check PATH in Environment Variables
+
+ISSUE: "Access denied" or "Permission denied"
+FIX:
+  - Run PowerShell as Administrator
+  - Close all Python programs
+  - Try again
+
+ISSUE: Packages won't install
+FIX:
+  .\venv\Scripts\activate
+  python -m pip install --upgrade pip
+  pip install Django djangorestframework django-cors-headers
+
+ISSUE: Virtual environment not working
+FIX:
+  Remove old venv: Remove-Item -Recurse -Force venv
+  Create new: python -m venv venv
+  Activate: .\venv\Scripts\activate
+
+================================================================================
+  VERIFICATION CHECKLIST
+================================================================================
+
+After restart, verify these commands work:
+
+□ python --version
+  Expected: Python 3.12.8
+
+□ pip --version
+  Expected: pip 24.x.x
+
+□ where python
+  Expected: C:\Python312\python.exe
+
+□ .\venv\Scripts\activate
+  Expected: (venv) appears in prompt
+
+□ python manage.py runserver
+  Expected: Server starts successfully
+
+================================================================================
+  FILES CREATED
+================================================================================
+
+Main files:
+- scripts\RUN_ME_AS_ADMIN.bat           ← START HERE (run as admin)
+- complete_python_setup.ps1     ← Full automated setup
+- scripts\verify_setup.ps1              ← Check if working after restart
+- scripts\docs\START_HERE.md                 ← Quick start guide
+- scripts\docs\SETUP_INSTRUCTIONS.md         ← Detailed instructions
+
+Helper files:
+- scripts\cleanup_python_simple.ps1     ← Remove Python only
+- scripts\docs\QUICK_FIX_GUIDE.txt          ← This file
+
+================================================================================
+  SUPPORT
+================================================================================
+
+For detailed troubleshooting, see:
+    scripts\docs\SETUP_INSTRUCTIONS.md
+
+For quick reference, see:
+    scripts\docs\START_HERE.md
+
+================================================================================

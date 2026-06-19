@@ -21,6 +21,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             "username",
             "email",
             "full_name",
+            "phone_country_code",
+            "phone_number",
             "age",
             "gender",
             "location",
@@ -37,6 +39,12 @@ class ProfileSerializer(serializers.ModelSerializer):
             "pref_min_height",
             "pref_occupation",
             "pref_values",
+            "pref_gender",
+            "pref_location",
+            "pref_max_distance_km",
+            "pref_relationship_goal",
+            "pref_verified_only",
+            "relationship_goal",
             "is_verified",
             "is_onboarded",
             "profile_completeness",
@@ -52,9 +60,32 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ["id", "username", "email", "profile"]
 
 
+class GoogleAuthSerializer(serializers.Serializer):
+    id_token = serializers.CharField()
+
+
+class FirebasePhoneVerifySerializer(serializers.Serializer):
+    id_token = serializers.CharField()
+    phone = serializers.CharField(required=False, allow_blank=True)
+
+
+class FirebaseAuthSerializer(serializers.Serializer):
+    id_token = serializers.CharField()
+
+
+class EmailOtpSendSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class EmailOtpVerifySerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(min_length=6, max_length=6)
+
+
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     full_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    username = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = User
@@ -62,9 +93,21 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         full_name = validated_data.pop("full_name", "")
+        username = (validated_data.pop("username", None) or "").strip()
+        email = validated_data["email"]
+
+        if not username:
+            username = email
+
+        base_username = username
+        suffix = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}_{suffix}"
+            suffix += 1
+
         user = User.objects.create_user(
-            username=validated_data["username"],
-            email=validated_data["email"],
+            username=username,
+            email=email,
             password=validated_data["password"],
         )
         profile, _ = Profile.objects.get_or_create(user=user)

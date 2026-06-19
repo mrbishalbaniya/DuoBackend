@@ -21,11 +21,29 @@ class Profile(models.Model):
         ("Business", "Business/Self-Employed"),
         ("NotWorking", "Not Working"),
     ]
+    GENDER_PREF_CHOICES = [
+        ("everyone", "Everyone"),
+        ("women", "Women"),
+        ("men", "Men"),
+    ]
+    RELATIONSHIP_GOAL_CHOICES = [
+        ("serious", "Serious"),
+        ("casual", "Casual"),
+        ("dating", "Dating"),
+    ]
+    RELATIONSHIP_GOAL_PREF_CHOICES = [
+        ("everyone", "Everyone"),
+        ("serious", "Serious"),
+        ("casual", "Casual"),
+        ("dating", "Dating"),
+    ]
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile"
     )
     full_name = models.CharField(max_length=200, blank=True)
+    phone_country_code = models.CharField(max_length=8, blank=True, default="+977")
+    phone_number = models.CharField(max_length=20, blank=True)
     age = models.IntegerField(null=True, blank=True)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True)
     location = models.CharField(max_length=200, default="Kathmandu, Nepal")
@@ -49,6 +67,18 @@ class Profile(models.Model):
         max_length=200, blank=True, default="Professional Degree"
     )
     pref_values = models.TextField(blank=True)
+    pref_gender = models.CharField(
+        max_length=10, choices=GENDER_PREF_CHOICES, default="everyone"
+    )
+    pref_location = models.CharField(max_length=200, blank=True, default="")
+    pref_max_distance_km = models.IntegerField(default=50)
+    pref_relationship_goal = models.CharField(
+        max_length=20, choices=RELATIONSHIP_GOAL_PREF_CHOICES, default="everyone"
+    )
+    pref_verified_only = models.BooleanField(default=False)
+    relationship_goal = models.CharField(
+        max_length=20, choices=RELATIONSHIP_GOAL_CHOICES, blank=True, default=""
+    )
 
     is_verified = models.BooleanField(default=False)
     is_onboarded = models.BooleanField(default=False)

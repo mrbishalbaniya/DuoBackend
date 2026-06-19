@@ -6,7 +6,8 @@ import sys
 
 import django
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_ROOT)
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "duo_project.settings")
 django.setup()
 
@@ -89,6 +90,7 @@ def main():
         profile.pref_min_height = "5'4\" (163cm)"
         profile.pref_occupation = random.choice(EDUCATIONS)
         profile.pref_values = "Kindness, honesty, ambition"
+        profile.relationship_goal = random.choice(["serious", "casual", "dating"])
         profile.is_verified = random.choice([True, True, False])
         profile.is_onboarded = True
         profile.save()

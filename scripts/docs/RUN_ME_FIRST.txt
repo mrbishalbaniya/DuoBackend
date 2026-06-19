@@ -1,0 +1,150 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                                                                           ║
+║                   ⚡ PYTHON 3.12 SETUP - START HERE ⚡                    ║
+║                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+YOU ARE SEEING THIS BECAUSE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Python is not properly installed or configured on your system.
+
+WHAT THIS WILL DO:
+━━━━━━━━━━━━━━━━━━
+✓ Remove all old Python installations
+✓ Install Python 3.12.8 (correct version)
+✓ Setup environment variables automatically
+✓ Create virtual environment
+✓ Install Django and all project dependencies
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                          📋 FOLLOW THESE STEPS
+
+═══════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ STEP 1: RUN SETUP (5-10 minutes)                                       │
+└─────────────────────────────────────────────────────────────────────────┘
+
+    1. Find this file:  scripts\RUN_ME_AS_ADMIN.bat
+    
+    2. RIGHT-CLICK on it
+    
+    3. Select: "Run as administrator"
+    
+    4. Wait for completion
+    
+    ⚠ IMPORTANT: You MUST run as Administrator!
+
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ STEP 2: DISABLE APP ALIASES (1 minute)                                 │
+└─────────────────────────────────────────────────────────────────────────┘
+
+    1. Press: Win + I  (opens Settings)
+    
+    2. Navigate to:
+       Apps → Advanced app settings → App execution aliases
+    
+    3. Turn OFF these toggles:
+       • python.exe
+       • python3.exe
+    
+    ⚠ This prevents Microsoft Store from interfering!
+
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ STEP 3: RESTART COMPUTER (required!)                                   │
+└─────────────────────────────────────────────────────────────────────────┘
+
+    Save all your work and restart your computer.
+    
+    This is REQUIRED for PATH changes to take effect.
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                         ✓ AFTER RESTART - VERIFY
+
+═══════════════════════════════════════════════════════════════════════════
+
+Open PowerShell and run:
+
+    .\scripts\verify_setup.ps1
+
+This checks if Python is working correctly.
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                      🚀 START YOUR DJANGO SERVER
+
+═══════════════════════════════════════════════════════════════════════════
+
+Once verification passes:
+
+    .\venv\Scripts\activate
+    python manage.py runserver
+
+Server will be available at: http://127.0.0.1:8000
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                           📚 NEED MORE HELP?
+
+═══════════════════════════════════════════════════════════════════════════
+
+Quick guide:         scripts\docs\START_HERE.md
+Detailed guide:      scripts\docs\SETUP_INSTRUCTIONS.md
+Troubleshooting:     scripts\docs\QUICK_FIX_GUIDE.txt
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                              ⏱ TIMELINE
+
+═══════════════════════════════════════════════════════════════════════════
+
+Step 1 - Setup script:           5-10 minutes
+Step 2 - Disable aliases:        1 minute
+Step 3 - Restart:                2-3 minutes
+Verification:                    30 seconds
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOTAL TIME:                      ~10-15 minutes
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                         ❓ COMMON QUESTIONS
+
+═══════════════════════════════════════════════════════════════════════════
+
+Q: Why can't I just install Python from Microsoft Store?
+A: Microsoft Store Python causes PATH conflicts. This setup ensures
+   a clean, properly configured Python installation.
+
+Q: Will this delete my other projects?
+A: No! This only removes Python installations and creates a new
+   virtual environment for THIS project.
+
+Q: Do I need to do this every time?
+A: No! Once setup is complete, you just activate the virtual
+   environment and run your server normally.
+
+Q: What if the script fails?
+A: See scripts\docs\SETUP_INSTRUCTIONS.md for manual installation steps.
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+                    ✨ READY? LET'S GET STARTED! ✨
+
+═══════════════════════════════════════════════════════════════════════════
+
+→ RIGHT-CLICK on: scripts\RUN_ME_AS_ADMIN.bat
+→ Select: "Run as administrator"
+→ Follow the prompts
+
+═══════════════════════════════════════════════════════════════════════════

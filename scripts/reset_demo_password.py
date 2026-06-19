@@ -9,7 +9,8 @@ from django.conf import settings
 settings.configure(PASSWORD_HASHERS=["django.contrib.auth.hashers.PBKDF2PasswordHasher"])
 from django.contrib.auth.hashers import make_password  # noqa: E402
 
-DB = Path(__file__).resolve().parent / "db.sqlite3"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB = PROJECT_ROOT / "db.sqlite3"
 USERNAME = "demo"
 PASSWORD = "demo1234"
 
