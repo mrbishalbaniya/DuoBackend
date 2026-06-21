@@ -35,25 +35,26 @@ def get_or_create_google_user(idinfo: dict):
     first_name = (idinfo.get("given_name") or "").strip()
     last_name = (idinfo.get("family_name") or "").strip()
 
-    username = email
-    base_username = username
-    counter = 1
-    while User.objects.filter(username=username).exclude(email=email).exists():
-        username = f"{base_username}_{counter}"
-        counter += 1
+    user = User.objects.filter(email__iexact=email).order_by("id").first()
+    created = False
 
-    user, created = User.objects.get_or_create(
-        email=email,
-        defaults={
-            "username": username,
-            "first_name": first_name,
-            "last_name": last_name,
-        },
-    )
+    if user is None:
+        username = email
+        base_username = username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}_{counter}"
+            counter += 1
 
-    if created:
+        user = User.objects.create(
+            username=username,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+        )
         user.set_unusable_password()
-        user.save()
+        user.save(update_fields=["password"])
+        created = True
     elif not user.first_name and first_name:
         user.first_name = first_name
         user.last_name = last_name

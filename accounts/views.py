@@ -2,23 +2,22 @@ from rest_framework import generics, permissions, status, parsers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.storage import default_storage
 from django.db.models import Q
 from django.utils import timezone
+from google.auth.exceptions import GoogleAuthError
 from .serializers import (
     RegisterSerializer,
     UserSerializer,
     ProfileSerializer,
     GoogleAuthSerializer,
-    FirebasePhoneVerifySerializer,
-    FirebaseAuthSerializer,
     EmailOtpSendSerializer,
     EmailOtpVerifySerializer,
 )
 from .google_auth import get_or_create_google_user, verify_google_id_token
-from .phone_auth import get_or_create_phone_user, verify_firebase_phone_token
 from .email_otp import send_email_otp, verify_email_otp
 from .models import Profile
 from .geo import profile_coordinates, haversine_km, CITY_COORDS
@@ -30,6 +29,11 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = RegisterSerializer
 
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Register a new account",
+        responses={201: UserSerializer},
+    )
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -45,6 +49,7 @@ class RegisterView(generics.CreateAPIView):
 
 
 class MeView(APIView):
+    @extend_schema(tags=["Authentication"], summary="Get current authenticated user")
     def get(self, request):
         return Response(UserSerializer(request.user).data)
 
@@ -52,6 +57,13 @@ class MeView(APIView):
 class GoogleAuthView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Sign in with Google ID token",
+        request=GoogleAuthSerializer,
+        responses={200: UserSerializer},
+        auth=[],
+    )
     def post(self, request):
         serializer = GoogleAuthSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -59,8 +71,15 @@ class GoogleAuthView(APIView):
         try:
             idinfo = verify_google_id_token(serializer.validated_data["id_token"])
             user, _created = get_or_create_google_user(idinfo)
-        except ValueError as exc:
+        except (ValueError, GoogleAuthError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            detail = (
+                str(exc)
+                if settings.DEBUG
+                else "Google sign-in could not be verified. Check OAuth client settings."
+            )
+            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
         refresh = RefreshToken.for_user(user)
         return Response(
@@ -73,38 +92,17 @@ class GoogleAuthView(APIView):
         )
 
 
-class FirebasePhoneVerifyView(APIView):
-    """Verify Firebase phone OTP during registration."""
-
-    permission_classes = [permissions.AllowAny]
-
-    def post(self, request):
-        serializer = FirebasePhoneVerifySerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        expected_phone = (serializer.validated_data.get("phone") or "").strip() or None
-
-        try:
-            phone = verify_firebase_phone_token(
-                serializer.validated_data["id_token"],
-                expected_phone=expected_phone,
-            )
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception:
-            return Response(
-                {"detail": "Invalid or expired Firebase token."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return Response({"verified": True, "phone": phone}, status=status.HTTP_200_OK)
-
-
 class EmailOtpSendView(APIView):
     """Send a 6-digit verification code to an email address."""
 
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Send email OTP for registration",
+        request=EmailOtpSendSerializer,
+        auth=[],
+    )
     def post(self, request):
         serializer = EmailOtpSendSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -134,6 +132,12 @@ class EmailOtpVerifyView(APIView):
 
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Verify email OTP code",
+        request=EmailOtpVerifySerializer,
+        auth=[],
+    )
     def post(self, request):
         serializer = EmailOtpVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -149,41 +153,17 @@ class EmailOtpVerifyView(APIView):
         )
 
 
-class FirebaseAuthView(APIView):
-    """Login or sign-up with a Firebase ID token (phone OTP)."""
-
-    permission_classes = [permissions.AllowAny]
-
-    def post(self, request):
-        serializer = FirebaseAuthSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        try:
-            phone = verify_firebase_phone_token(serializer.validated_data["id_token"])
-            user, _created = get_or_create_phone_user(phone)
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception:
-            return Response(
-                {"detail": "Invalid or expired Firebase token."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        refresh = RefreshToken.for_user(user)
-        return Response(
-            {
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
-                "user": UserSerializer(user).data,
-            },
-            status=status.HTTP_200_OK,
-        )
-
-
 class MyProfileView(APIView):
+    @extend_schema(tags=["Profiles"], summary="Get my profile")
     def get(self, request):
         return Response(ProfileSerializer(request.user.profile).data)
 
+    @extend_schema(
+        tags=["Profiles"],
+        summary="Update my profile",
+        request=ProfileSerializer,
+        responses={200: ProfileSerializer},
+    )
     def put(self, request):
         serializer = ProfileSerializer(request.user.profile, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -196,6 +176,18 @@ class ProfilePhotoUploadView(APIView):
 
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
 
+    @extend_schema(
+        tags=["Profiles"],
+        summary="Upload a profile photo",
+        request={
+            "multipart/form-data": {
+                "type": "object",
+                "properties": {"image": {"type": "string", "format": "binary"}},
+                "required": ["image"],
+            }
+        },
+        responses={201: OpenApiResponse(description="Returns uploaded image URL.")},
+    )
     def post(self, request):
         image = request.data.get("image")
         if not image:
@@ -211,6 +203,11 @@ class ProfilePhotoUploadView(APIView):
 class DiscoverView(APIView):
     """Get profiles to swipe on (excludes self and already-swiped profiles)."""
 
+    @extend_schema(
+        tags=["Discovery"],
+        summary="Discover profiles to swipe",
+        responses={200: ProfileSerializer(many=True)},
+    )
     def get(self, request):
         user_profile = request.user.profile
         swiped_ids = Swipe.objects.filter(from_user=request.user).values_list(
@@ -275,6 +272,9 @@ class DiscoverView(APIView):
         return Response(ProfileSerializer(filtered, many=True).data)
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["Profiles"], summary="Get profile by ID"),
+)
 class ProfileDetailView(generics.RetrieveAPIView):
     queryset = Profile.objects.all()
     serializer_class = ProfileSerializer

@@ -64,15 +64,6 @@ class GoogleAuthSerializer(serializers.Serializer):
     id_token = serializers.CharField()
 
 
-class FirebasePhoneVerifySerializer(serializers.Serializer):
-    id_token = serializers.CharField()
-    phone = serializers.CharField(required=False, allow_blank=True)
-
-
-class FirebaseAuthSerializer(serializers.Serializer):
-    id_token = serializers.CharField()
-
-
 class EmailOtpSendSerializer(serializers.Serializer):
     email = serializers.EmailField()
 

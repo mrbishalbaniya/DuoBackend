@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     "channels",
     "rest_framework",
     "rest_framework_simplejwt",
+    "drf_spectacular",
     "corsheaders",
     "accounts",
     "matching",
@@ -98,12 +99,6 @@ FRONTEND_URL = config("FRONTEND_URL", default="http://localhost:3000")
 GOOGLE_OAUTH_CLIENT_ID = config("GOOGLE_OAUTH_CLIENT_ID", default="")
 GOOGLE_OAUTH_CLIENT_SECRET = config("GOOGLE_OAUTH_CLIENT_SECRET", default="")
 
-FIREBASE_PROJECT_ID = config("FIREBASE_PROJECT_ID", default="")
-FIREBASE_CREDENTIALS_PATH = config(
-    "FIREBASE_CREDENTIALS_PATH",
-    default=str(BASE_DIR / "firebase-service-account.json"),
-)
-
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = config("EMAIL_HOST", default="smtp.gmail.com")
 EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
@@ -126,6 +121,56 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Duo API",
+    "DESCRIPTION": (
+        "REST API for the Duo matrimonial and dating platform. "
+        "Authenticate with JWT (`Bearer <access_token>`) for protected routes. "
+        "Obtain tokens via `/api/auth/login/`, `/api/auth/google/`, or `/api/auth/register/`."
+    ),
+    "VERSION": "1.0.0",
+    "CONTACT": {"name": "Duo Team", "email": "support@duo.app"},
+    "LICENSE": {"name": "Proprietary"},
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SCHEMA_PATH_PREFIX": r"/api/",
+    "POSTPROCESSING_HOOKS": ["duo_project.schema.postprocess_tag_groups"],
+    "TAGS": [
+        {"name": "Authentication", "description": "Register, login, OAuth, and OTP verification."},
+        {"name": "Profiles", "description": "User profile management and photo uploads."},
+        {"name": "Discovery", "description": "Browse profiles to swipe on."},
+        {"name": "Matching", "description": "Swipes, matches, and compatibility insights."},
+        {"name": "Chat", "description": "Conversations, messages, and media uploads."},
+    ],
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayRequestDuration": True,
+        "filter": True,
+        "tryItOutEnabled": True,
+        "docExpansion": "list",
+        "defaultModelsExpandDepth": 2,
+        "syntaxHighlight.theme": "monokai",
+    },
+    "REDOC_UI_SETTINGS": {
+        "hideDownloadButton": False,
+        "expandResponses": "200,201",
+        "pathInMiddlePanel": True,
+    },
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "JWT access token from login, register, or Google auth.",
+            }
+        }
+    },
+    "SECURITY": [{"BearerAuth": []}],
 }
 
 SIMPLE_JWT = {
@@ -148,6 +193,12 @@ JAZZMIN_SETTINGS = {
         {
             "name": "Home",
             "url": "admin:index",
+            "permissions": ["auth.view_user"],
+        },
+        {
+            "name": "API Docs",
+            "url": "/api/docs/",
+            "new_window": True,
             "permissions": ["auth.view_user"],
         },
         {"model": "accounts.Profile"},
@@ -191,7 +242,6 @@ JAZZMIN_UI_TWEAKS = {
     "sidebar_nav_legacy_style": False,
     "sidebar_nav_flat_style": False,
     "theme": "flatly",
-    "dark_mode_theme": None,
     "button_classes": {
         "primary": "btn-primary",
         "secondary": "btn-secondary",

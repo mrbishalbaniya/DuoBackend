@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.generics import RetrieveAPIView
 from django.contrib.auth.models import User
 from django.db.models import Q
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 from .models import Swipe, Match
 from .serializers import SwipeSerializer, MatchSerializer
 from chat.models import Conversation
@@ -12,6 +13,12 @@ from chat.models import Conversation
 
 class SwipeView(APIView):
     """Record a swipe and check for mutual match."""
+
+    @extend_schema(
+        tags=["Matching"],
+        summary="Swipe on a profile (like, skip, or superlike)",
+        request=SwipeSerializer,
+    )
     def post(self, request):
         serializer = SwipeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -97,6 +104,12 @@ class SwipeView(APIView):
 
 class MatchListView(APIView):
     """List all matches for the current user."""
+
+    @extend_schema(
+        tags=["Matching"],
+        summary="List my matches",
+        responses={200: MatchSerializer(many=True)},
+    )
     def get(self, request):
         matches = Match.objects.filter(
             Q(user1=request.user) | Q(user2=request.user)
@@ -105,6 +118,9 @@ class MatchListView(APIView):
         return Response(serializer.data)
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["Matching"], summary="Get match compatibility insights"),
+)
 class MatchInsightView(RetrieveAPIView):
     """Get detailed compatibility insights for a specific match."""
     serializer_class = MatchSerializer
