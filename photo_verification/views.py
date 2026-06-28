@@ -76,8 +76,11 @@ class PhotoUploadView(APIView):
         try:
             result = pipeline.analyze_file(image, user_id=request.user.id, is_primary=is_primary)
         except Exception as exc:
+            detail = "Image analysis failed. Please try a different photo."
+            if settings.DEBUG:
+                detail = f"Image analysis failed: {exc}"
             return Response(
-                {"detail": f"Image analysis failed: {exc}"},
+                {"detail": detail},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

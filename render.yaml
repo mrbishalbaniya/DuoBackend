@@ -14,7 +14,7 @@ services:
     startCommand: >-
       python manage.py migrate --noinput &&
       daphne -b 0.0.0.0 -p $PORT duo_project.asgi:application
-    healthCheckPath: /api/docs/
+    healthCheckPath: /health/
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.11"
@@ -32,9 +32,14 @@ services:
           name: duo-db
           property: connectionString
       - key: FRONTEND_URL
-        value: http://localhost:3000
+        sync: false
       - key: CORS_ALLOWED_ORIGINS
-        value: http://localhost:3000,http://localhost:3001,http://localhost:8081,http://localhost:8082
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: duo-redis
+          property: connectionString
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
@@ -49,6 +54,28 @@ services:
         sync: false
       - key: GOOGLE_OAUTH_REDIRECT_URI
         sync: false
+      - key: GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS
+        sync: false
+      - key: ESEWA_PRODUCT_CODE
+        sync: false
+      - key: ESEWA_SECRET_KEY
+        sync: false
+      - key: ESEWA_SUCCESS_URL
+        sync: false
+      - key: ESEWA_FAILURE_URL
+        sync: false
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+
+  - type: redis
+    name: duo-redis
+    region: singapore
+    plan: free
+    ipAllowList: []
 
 databases:
   - name: duo-db

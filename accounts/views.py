@@ -1,3 +1,7 @@
+import secrets
+
+from django.core.cache import cache
+from django.core.signing import TimestampSigner
 from django.shortcuts import redirect
 from urllib.parse import urlencode
 from rest_framework import generics, permissions, status, parsers
@@ -13,6 +17,8 @@ from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 from google.auth.exceptions import GoogleAuthError
+from .auth_cookies import set_auth_cookies
+from .throttling import AuthRateThrottle
 from .serializers import (
     RegisterSerializer,
     UserSerializer,
@@ -46,6 +52,7 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = [permissions.AllowAny]
     serializer_class = RegisterSerializer
+    throttle_classes = [AuthRateThrottle]
 
     @extend_schema(
         tags=["Authentication"],
@@ -57,13 +64,15 @@ class RegisterView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         refresh = RefreshToken.for_user(user)
-        return Response({
+        response = Response({
             'user': UserSerializer(user).data,
             'tokens': {
                 'refresh': str(refresh),
                 'access': str(refresh.access_token),
             }
         }, status=status.HTTP_201_CREATED)
+        set_auth_cookies(response, str(refresh.access_token), str(refresh))
+        return response
 
 
 class MeView(APIView):
@@ -74,6 +83,7 @@ class MeView(APIView):
 
 class GoogleAuthView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     @extend_schema(
         tags=["Authentication"],
@@ -109,7 +119,7 @@ class GoogleAuthView(APIView):
             return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
         refresh = RefreshToken.for_user(user)
-        return Response(
+        response = Response(
             {
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
@@ -117,6 +127,8 @@ class GoogleAuthView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+        set_auth_cookies(response, str(refresh.access_token), str(refresh))
+        return response
 
 
 class GoogleOAuthCallbackView(APIView):
@@ -145,13 +157,19 @@ class GoogleOAuthCallbackView(APIView):
         except Profile.DoesNotExist:
             onboarded = False
 
-        params = urlencode(
+        import secrets
+
+        handoff_id = secrets.token_urlsafe(32)
+        cache.set(
+            f"auth_handoff:{handoff_id}",
             {
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
-                "onboarded": "1" if onboarded else "0",
-            }
+                "onboarded": onboarded,
+            },
+            timeout=120,
         )
+        params = urlencode({"handoff": handoff_id})
         return redirect(f"{settings.FRONTEND_URL}/login/google/complete?{params}")
 
 
@@ -159,6 +177,7 @@ class EmailOtpSendView(APIView):
     """Send a 6-digit verification code to an email address."""
 
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     @extend_schema(
         tags=["Authentication"],
@@ -194,6 +213,7 @@ class EmailOtpVerifyView(APIView):
     """Verify a 6-digit email OTP during registration."""
 
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     @extend_schema(
         tags=["Authentication"],
@@ -218,6 +238,7 @@ class EmailOtpVerifyView(APIView):
 
 class PasswordForgotView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     @extend_schema(
         tags=["Authentication"],
@@ -253,6 +274,7 @@ class PasswordForgotView(APIView):
 
 class PasswordResetView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     @extend_schema(
         tags=["Authentication"],

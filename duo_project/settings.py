@@ -48,6 +48,17 @@ def _parse_origins(value: str) -> list[str]:
 
 SECRET_KEY = config("SECRET_KEY", default="django-insecure-duo-dev-key-change-in-production-2024")
 DEBUG = config("DEBUG", default=True, cast=bool)
+
+_INSECURE_SECRET_KEYS = {
+    "",
+    "change-me-in-production",
+    "django-insecure-duo-dev-key-change-in-production-2024",
+}
+if not DEBUG:
+    if SECRET_KEY in _INSECURE_SECRET_KEYS:
+        raise ValueError("Set a strong SECRET_KEY environment variable for production.")
+    if not env("DATABASE_URL"):
+        raise ValueError("DATABASE_URL is required when DEBUG=False.")
 ALLOWED_HOSTS = [
     host
     for host in (_normalize_host(part) for part in config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(","))
@@ -58,8 +69,15 @@ ALLOWED_HOSTS = [
 if not DEBUG:
     USE_X_FORWARDED_HOST = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=True, cast=bool)
+    SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=31536000, cast=int)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "None"
+    CSRF_COOKIE_SAMESITE = "None"
 
 INSTALLED_APPS = [
     "daphne",
@@ -124,6 +142,15 @@ CHANNEL_LAYERS = {
     },
 }
 
+_redis_url = env("REDIS_URL")
+if _redis_url:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [_redis_url]},
+        }
+    }
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
@@ -160,7 +187,9 @@ from django.db.backends.signals import connection_created  # noqa: E402
 connection_created.connect(_configure_sqlite)
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 8}},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
 LANGUAGE_CODE = "en-us"
@@ -231,8 +260,10 @@ SUBSCRIPTION_PLAN_DESCRIPTION = config(
     "SUBSCRIPTION_PLAN_DESCRIPTION",
     default="See who liked you and unlock blurred profiles on Discover.",
 )
-ESEWA_PRODUCT_CODE = env("ESEWA_PRODUCT_CODE", default="EPAYTEST").strip()
-ESEWA_SECRET_KEY = env("ESEWA_SECRET_KEY", default="8gBm/:&EnhH.1/q").strip()
+ESEWA_PRODUCT_CODE = env("ESEWA_PRODUCT_CODE", default="EPAYTEST" if DEBUG else "").strip()
+ESEWA_SECRET_KEY = env("ESEWA_SECRET_KEY", default="8gBm/:&EnhH.1/q" if DEBUG else "").strip()
+if not DEBUG and (not ESEWA_PRODUCT_CODE or not ESEWA_SECRET_KEY):
+    raise ValueError("ESEWA_PRODUCT_CODE and ESEWA_SECRET_KEY are required when DEBUG=False.")
 ESEWA_FORM_URL = config(
     "ESEWA_FORM_URL",
     default="https://rc-epay.esewa.com.np/api/epay/main/v2/form",
@@ -266,13 +297,30 @@ CACHES = {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
     }
 }
+if _redis_url:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": _redis_url,
+        }
+    }
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "accounts.authentication.CookieJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/minute",
+        "user": "300/minute",
+        "auth": "10/minute",
+    },
+    "EXCEPTION_HANDLER": "duo_project.exceptions.custom_exception_handler",
 }
 
 SPECTACULAR_SETTINGS = {
@@ -328,9 +376,48 @@ SPECTACULAR_SETTINGS = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=7),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": False,
+}
+
+GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS = [
+    uri.strip().rstrip("/")
+    for uri in config(
+        "GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS",
+        default=config("GOOGLE_OAUTH_REDIRECT_URI", default="http://localhost:8000/api/auth/google/callback/"),
+    ).split(",")
+    if uri.strip()
+]
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO" if not DEBUG else "DEBUG",
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
 }
 
 JAZZMIN_SETTINGS = {

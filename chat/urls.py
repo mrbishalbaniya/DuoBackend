@@ -9,6 +9,7 @@ from .views import (
     ConversationClearHistoryView,
     ConversationUnmatchView,
     ConversationReportView,
+    WebSocketTicketView,
 )
 
 urlpatterns = [
@@ -20,5 +21,6 @@ urlpatterns = [
     path('conversations/<int:conversation_id>/report/', ConversationReportView.as_view(), name='conversation_report'),
     path('conversations/<int:conversation_id>/messages/', MessageListView.as_view(), name='messages'),
     path('conversations/<int:conversation_id>/typing/', TypingHeartbeatView.as_view(), name='typing_heartbeat'),
+    path('conversations/<int:conversation_id>/ws-ticket/', WebSocketTicketView.as_view(), name='ws_ticket'),
     path('upload/', ImageUploadView.as_view(), name='image_upload'),
 ]

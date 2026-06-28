@@ -1,5 +1,4 @@
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import (
@@ -7,20 +6,29 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
+from rest_framework.permissions import AllowAny
+
+from duo_project.health import health_check
+
+
+class PublicSchemaView(SpectacularAPIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+
+class PublicSwaggerView(SpectacularSwaggerView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+
+class PublicRedocView(SpectacularRedocView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
 
 urlpatterns = [
+    path("health/", health_check, name="health"),
     path("admin/", admin.site.urls),
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path(
-        "api/docs/",
-        SpectacularSwaggerView.as_view(url_name="schema"),
-        name="swagger-ui",
-    ),
-    path(
-        "api/docs/redoc/",
-        SpectacularRedocView.as_view(url_name="schema"),
-        name="redoc",
-    ),
     path("api/auth/", include("accounts.urls")),
     path("api/profiles/", include("accounts.profile_urls")),
     path("api/matching/", include("matching.urls")),
@@ -31,4 +39,33 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
+    from django.conf.urls.static import static
+
+    urlpatterns += [
+        path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+        path(
+            "api/docs/",
+            SpectacularSwaggerView.as_view(url_name="schema"),
+            name="swagger-ui",
+        ),
+        path(
+            "api/docs/redoc/",
+            SpectacularRedocView.as_view(url_name="schema"),
+            name="redoc",
+        ),
+    ]
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+else:
+    urlpatterns += [
+        path("api/schema/", PublicSchemaView.as_view(), name="schema"),
+        path(
+            "api/docs/",
+            PublicSwaggerView.as_view(url_name="schema"),
+            name="swagger-ui",
+        ),
+        path(
+            "api/docs/redoc/",
+            PublicRedocView.as_view(url_name="schema"),
+            name="redoc",
+        ),
+    ]

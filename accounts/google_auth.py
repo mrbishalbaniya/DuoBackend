@@ -30,6 +30,11 @@ def verify_google_id_token(token: str) -> dict:
 
 
 def exchange_google_auth_code(code: str, redirect_uri: str) -> str:
+    redirect_uri = redirect_uri.rstrip("/")
+    allowed = [uri.rstrip("/") for uri in settings.GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS]
+    if redirect_uri not in allowed:
+        raise ValueError("Redirect URI is not allowed.")
+
     import json
     import urllib.error
     import urllib.parse

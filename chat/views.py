@@ -1,4 +1,5 @@
 from django.utils import timezone
+from django.core.signing import TimestampSigner
 from rest_framework import status, parsers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -277,3 +278,21 @@ class ConversationReportView(APIView):
         )
 
         return Response({'detail': 'Report submitted. Our team will review it.'})
+
+
+class WebSocketTicketView(APIView):
+    """Issue a short-lived signed ticket for WebSocket authentication."""
+
+    @extend_schema(
+        tags=["Chat"],
+        summary="Get WebSocket connection ticket",
+        responses={200: OpenApiResponse(description='{"ticket": "..."}')},
+    )
+    def post(self, request, conversation_id):
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
+
+        signer = TimestampSigner(salt="duo-ws-ticket")
+        ticket = signer.sign(f"{request.user.id}:{convo.id}")
+        return Response({"ticket": ticket})
