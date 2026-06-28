@@ -1,0 +1,21 @@
+# Lean production dependencies for Render (avoids Jupyter/dev tools OOM on free tier).
+Django==5.2.15
+daphne==4.2.1
+channels==4.3.2
+djangorestframework==3.14.0
+djangorestframework-simplejwt==5.3.1
+drf-spectacular==0.29.0
+django-cors-headers==4.3.1
+django-jazzmin==3.0.4
+cloudinary==1.44.1
+django-cloudinary-storage==0.3.0
+python-decouple==3.8
+dj-database-url==2.3.0
+whitenoise==6.9.0
+psycopg2-binary==2.9.11
+pillow==12.1.1
+opencv-python-headless>=4.8.0,<4.12
+mediapipe==0.10.21
+numpy<2
+requests==2.32.5
+google-auth==2.40.0
