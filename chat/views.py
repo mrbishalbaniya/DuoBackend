@@ -1,13 +1,32 @@
 from django.utils import timezone
 from rest_framework import status, parsers
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Q
-from django.core.files.storage import default_storage
-from django.conf import settings
+from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_chat_media
 from drf_spectacular.utils import OpenApiResponse, extend_schema
-from .models import Conversation, Message
+from matching.models import Swipe
+
+from .models import Conversation, ConversationPreference, Message, UserBlock, UserReport
 from .serializers import ConversationSerializer, MessageSerializer, SendMessageSerializer
+
+
+def get_user_conversation(conversation_id, user):
+    try:
+        convo = Conversation.objects.select_related(
+            'match',
+            'match__user1',
+            'match__user2',
+        ).get(id=conversation_id)
+    except Conversation.DoesNotExist:
+        return None, Response({'detail': 'Conversation not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    match = convo.match
+    if user not in (match.user1, match.user2):
+        return None, Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
+
+    return convo, None
 
 
 class ConversationListView(APIView):
@@ -152,15 +171,109 @@ class ImageUploadView(APIView):
     def post(self, request):
         if 'image' not in request.data:
             return Response({'error': 'No image provided'}, status=400)
-        
+
         image = request.data['image']
-        
-        # Save file
-        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"chat_{timestamp}_{image.name}"
-        file_path = f"chat_images/{filename}"
-        
-        saved_path = default_storage.save(file_path, image)
-        file_url = request.build_absolute_uri(f"{settings.MEDIA_URL}{saved_path}")
-        
+
+        try:
+            file_url = upload_chat_media(image, user_id=request.user.id)
+        except CloudinaryNotConfiguredError as exc:
+            return Response({'detail': str(exc)}, status=503)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+
         return Response({'image_url': file_url}, status=201)
+
+
+class ConversationSettingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Chat"],
+        summary="Update conversation settings (nickname)",
+    )
+    def patch(self, request, conversation_id):
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
+
+        nickname = str(request.data.get('nickname', '')).strip()[:64]
+        pref, _ = ConversationPreference.objects.get_or_create(
+            user=request.user,
+            conversation=convo,
+        )
+        pref.nickname = nickname
+        pref.save(update_fields=['nickname', 'updated_at'])
+
+        return Response({'nickname': pref.nickname})
+
+
+class ConversationClearHistoryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Chat"],
+        summary="Clear chat history for the current user",
+    )
+    def post(self, request, conversation_id):
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
+
+        for message in convo.messages.all():
+            message.deleted_by.add(request.user)
+
+        return Response({'detail': 'Chat history cleared.'})
+
+
+class ConversationUnmatchView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Chat"],
+        summary="Unmatch and block the other user",
+    )
+    def post(self, request, conversation_id):
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
+
+        other_user = convo.match.get_other_user(request.user)
+        UserBlock.objects.get_or_create(blocker=request.user, blocked=other_user)
+        Swipe.objects.update_or_create(
+            from_user=request.user,
+            to_user=other_user,
+            defaults={'action': 'SKIP'},
+        )
+        Swipe.objects.update_or_create(
+            from_user=other_user,
+            to_user=request.user,
+            defaults={'action': 'SKIP'},
+        )
+        convo.match.delete()
+
+        return Response({'detail': 'Unmatched and blocked successfully.'})
+
+
+class ConversationReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Chat"],
+        summary="Report the other user in this conversation",
+    )
+    def post(self, request, conversation_id):
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
+
+        other_user = convo.match.get_other_user(request.user)
+        reason = str(request.data.get('reason', '')).strip()
+
+        UserReport.objects.create(
+            reporter=request.user,
+            reported=other_user,
+            conversation=convo,
+            reason=reason,
+        )
+
+        return Response({'detail': 'Report submitted. Our team will review it.'})

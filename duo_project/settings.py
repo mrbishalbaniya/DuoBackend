@@ -1,10 +1,20 @@
 from datetime import timedelta
+import os
 from pathlib import Path
 
 from decouple import Config, RepositoryEnv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-config = Config(RepositoryEnv(BASE_DIR / ".env"))
+_env_file = BASE_DIR / ".env"
+if _env_file.exists():
+    config = Config(RepositoryEnv(_env_file))
+else:
+    config = Config()
+
+
+def env(key: str, default=""):
+    """Read from process env first, then DuoBackend/.env."""
+    return os.environ.get(key) or config(key, default=default)
 
 SECRET_KEY = config("SECRET_KEY", default="django-insecure-duo-dev-key-change-in-production-2024")
 DEBUG = config("DEBUG", default=True, cast=bool)
@@ -27,11 +37,18 @@ INSTALLED_APPS = [
     "accounts",
     "matching",
     "chat",
+    "subscriptions",
+    "photo_verification",
 ]
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    *(
+        ["whitenoise.middleware.WhiteNoiseMiddleware"]
+        if not DEBUG
+        else []
+    ),
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -70,8 +87,36 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
+        "OPTIONS": {
+            # Wait up to 20s for write locks (rapid swipes + photo analysis).
+            "timeout": 20,
+        },
     }
 }
+
+_database_url = env("DATABASE_URL")
+if _database_url:
+    import dj_database_url
+
+    DATABASES["default"] = dj_database_url.parse(
+        _database_url,
+        conn_max_age=600,
+        ssl_require=not DEBUG,
+    )
+
+
+def _configure_sqlite(sender, connection, **kwargs):
+    if connection.vendor != "sqlite":
+        return
+    with connection.cursor() as cursor:
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA synchronous=NORMAL;")
+        cursor.execute("PRAGMA busy_timeout=20000;")
+
+
+from django.db.backends.signals import connection_created  # noqa: E402
+
+connection_created.connect(_configure_sqlite)
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -84,20 +129,62 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+
+# User uploads are stored in Cloudinary — not DuoBackend/media/
+CLOUDINARY_CLOUD_NAME = env("CLOUDINARY_CLOUD_NAME")
+CLOUDINARY_API_KEY = env("CLOUDINARY_API_KEY")
+CLOUDINARY_API_SECRET = env("CLOUDINARY_API_SECRET")
+CLOUDINARY_UPLOAD_PRESET = env("CLOUDINARY_UPLOAD_PRESET")
+CLOUDINARY_PROFILE_FOLDER = config("CLOUDINARY_PROFILE_FOLDER", default="duo/profile_photos")
+CLOUDINARY_CHAT_FOLDER = config("CLOUDINARY_CHAT_FOLDER", default="duo/chat_media")
+CLOUDINARY_VERIFICATION_FOLDER = config(
+    "CLOUDINARY_VERIFICATION_FOLDER", default="duo/verification_selfies"
+)
+
+# Photo verification / AI analysis
+PHOTO_VERIFICATION_STRICT_REJECT = config("PHOTO_VERIFICATION_STRICT_REJECT", default=True, cast=bool)
+PHOTO_AI_MODEL_PATH = env("PHOTO_AI_MODEL_PATH")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = config(
     "CORS_ALLOWED_ORIGINS",
-    default="http://localhost:3000,http://localhost:3001",
+    default="http://localhost:3000,http://localhost:3001,http://localhost:8081,http://localhost:8082",
 ).split(",")
 CORS_ALLOW_CREDENTIALS = True
 
 FRONTEND_URL = config("FRONTEND_URL", default="http://localhost:3000")
 GOOGLE_OAUTH_CLIENT_ID = config("GOOGLE_OAUTH_CLIENT_ID", default="")
 GOOGLE_OAUTH_CLIENT_SECRET = config("GOOGLE_OAUTH_CLIENT_SECRET", default="")
+GOOGLE_OAUTH_REDIRECT_URI = config(
+    "GOOGLE_OAUTH_REDIRECT_URI",
+    default="http://localhost:8000/api/auth/google/callback/",
+)
+
+SUBSCRIPTION_PLAN_ID = config("SUBSCRIPTION_PLAN_ID", default="duo_premium_monthly")
+SUBSCRIPTION_PLAN_NAME = config("SUBSCRIPTION_PLAN_NAME", default="Duo Premium")
+SUBSCRIPTION_PLAN_DESCRIPTION = config(
+    "SUBSCRIPTION_PLAN_DESCRIPTION",
+    default="See who liked you and unlock blurred profiles on Discover.",
+)
+ESEWA_PRODUCT_CODE = env("ESEWA_PRODUCT_CODE", default="EPAYTEST").strip()
+ESEWA_SECRET_KEY = env("ESEWA_SECRET_KEY", default="8gBm/:&EnhH.1/q").strip()
+ESEWA_FORM_URL = config(
+    "ESEWA_FORM_URL",
+    default="https://rc-epay.esewa.com.np/api/epay/main/v2/form",
+)
+ESEWA_STATUS_URL = config(
+    "ESEWA_STATUS_URL",
+    default="https://rc.esewa.com.np/api/epay/transaction/status/",
+)
+ESEWA_SUCCESS_URL = config(
+    "ESEWA_SUCCESS_URL",
+    default="http://localhost:8000/api/subscriptions/esewa/success/",
+)
+ESEWA_FAILURE_URL = config(
+    "ESEWA_FAILURE_URL",
+    default="http://localhost:8000/api/subscriptions/esewa/failure/",
+)
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = config("EMAIL_HOST", default="smtp.gmail.com")
@@ -144,6 +231,9 @@ SPECTACULAR_SETTINGS = {
         {"name": "Discovery", "description": "Browse profiles to swipe on."},
         {"name": "Matching", "description": "Swipes, matches, and compatibility insights."},
         {"name": "Chat", "description": "Conversations, messages, and media uploads."},
+        {"name": "Subscriptions", "description": "Duo Premium plans and eSewa payments."},
+        {"name": "Photos", "description": "AI profile photo verification and quality analysis."},
+        {"name": "Verification", "description": "Selfie liveness and face-matching verification."},
     ],
     "SWAGGER_UI_SETTINGS": {
         "deepLinking": True,
@@ -216,8 +306,9 @@ JAZZMIN_SETTINGS = {
         "matching.Match": "fas fa-fire",
         "chat.Conversation": "fas fa-comments",
         "chat.Message": "fas fa-envelope",
+        "subscriptions.SubscriptionPayment": "fas fa-crown",
     },
-    "order_with_respect_to": ["accounts", "matching", "chat", "auth"],
+    "order_with_respect_to": ["accounts", "matching", "chat", "subscriptions", "auth"],
     "colorscale": "indigo",
 }
 

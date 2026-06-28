@@ -12,6 +12,55 @@ class Conversation(models.Model):
     def __str__(self):
         return f"Conversation for {self.match}"
 
+    def get_other_user(self, user):
+        return self.match.get_other_user(user)
+
+
+class ConversationPreference(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='conversation_preferences')
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name='preferences',
+    )
+    nickname = models.CharField(max_length=64, blank=True, default='')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'conversation')
+
+    def __str__(self):
+        return f"{self.user_id} nickname for conversation {self.conversation_id}"
+
+
+class UserBlock(models.Model):
+    blocker = models.ForeignKey(User, on_delete=models.CASCADE, related_name='blocks_made')
+    blocked = models.ForeignKey(User, on_delete=models.CASCADE, related_name='blocks_received')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('blocker', 'blocked')
+
+    def __str__(self):
+        return f"{self.blocker_id} blocked {self.blocked_id}"
+
+
+class UserReport(models.Model):
+    reporter = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reports_made')
+    reported = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reports_received')
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reports',
+    )
+    reason = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Report {self.reporter_id} -> {self.reported_id}"
+
 
 class Message(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')

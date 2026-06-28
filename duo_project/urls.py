@@ -25,8 +25,10 @@ urlpatterns = [
     path("api/profiles/", include("accounts.profile_urls")),
     path("api/matching/", include("matching.urls")),
     path("api/chat/", include("chat.urls")),
+    path("api/subscriptions/", include("subscriptions.urls")),
+    path("api/photos/", include("photo_verification.urls")),
+    path("api/verification/", include("photo_verification.verification_urls")),
 ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

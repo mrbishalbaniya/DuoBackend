@@ -105,11 +105,9 @@ class Command(BaseCommand):
             profile.occupation = random.choice(OCCUPATIONS)
             profile.work_preference = random.choice(["Private", "Government", "Business"])
             profile.lifestyle_tags = random.choice(LIFESTYLE)
-            profile.photo_urls = [
-                f"https://picsum.photos/seed/{username}-1/600/800",
-                f"https://picsum.photos/seed/{username}-2/600/800",
-                f"https://picsum.photos/seed/{user.id}-3/600/800",
-            ]
+            from duo_project.placeholder_photos import photo_urls_for_seed
+
+            profile.photo_urls = photo_urls_for_seed(username, user.id)
             profile.photo_url = profile.photo_urls[0]
             profile.pref_age_min = 21
             profile.pref_age_max = 40

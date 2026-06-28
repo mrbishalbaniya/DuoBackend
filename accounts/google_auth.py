@@ -29,6 +29,48 @@ def verify_google_id_token(token: str) -> dict:
     return idinfo
 
 
+def exchange_google_auth_code(code: str, redirect_uri: str) -> str:
+    import json
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    client_id = settings.GOOGLE_OAUTH_CLIENT_ID
+    client_secret = settings.GOOGLE_OAUTH_CLIENT_SECRET
+    if not client_id or not client_secret:
+        raise ValueError("Google OAuth is not configured.")
+
+    payload = urllib.parse.urlencode(
+        {
+            "code": code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        }
+    ).encode()
+
+    request = urllib.request.Request(
+        "https://oauth2.googleapis.com/token",
+        data=payload,
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    try:
+        with urllib.request.urlopen(request) as response:
+            token_payload = json.loads(response.read().decode())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode()
+        raise ValueError(f"Google token exchange failed: {detail}") from exc
+
+    id_token_str = token_payload.get("id_token")
+    if not id_token_str:
+        raise ValueError("Google did not return an ID token.")
+
+    return id_token_str
+
+
 def get_or_create_google_user(idinfo: dict):
     email = idinfo["email"].strip().lower()
     full_name = (idinfo.get("name") or "").strip()

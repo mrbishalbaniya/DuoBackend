@@ -21,11 +21,9 @@ def photo_urls_for_profile(profile):
     user = profile.user
     seed = user.username if user else f"profile-{profile.pk}"
     uid = user.id if user else profile.pk
-    return [
-        f"https://picsum.photos/seed/{seed}-1/600/800",
-        f"https://picsum.photos/seed/{seed}-2/600/800",
-        f"https://picsum.photos/seed/{uid}-3/600/800",
-    ]
+    from duo_project.placeholder_photos import photo_urls_for_seed
+
+    return photo_urls_for_seed(seed, uid)
 
 
 def main():

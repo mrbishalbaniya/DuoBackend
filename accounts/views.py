@@ -1,11 +1,15 @@
+from django.shortcuts import redirect
+from urllib.parse import urlencode
 from rest_framework import generics, permissions, status, parsers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
+from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_profile_photo
+from photo_verification.constants import PhotoStatus
+from photo_verification.services.pipeline import PhotoVerificationPipeline
+from django.contrib.auth import get_user_model
 from django.conf import settings
-from django.contrib.auth.models import User
-from django.core.files.storage import default_storage
 from django.db.models import Q
 from django.utils import timezone
 from google.auth.exceptions import GoogleAuthError
@@ -16,12 +20,26 @@ from .serializers import (
     GoogleAuthSerializer,
     EmailOtpSendSerializer,
     EmailOtpVerifySerializer,
+    PasswordForgotSerializer,
+    PasswordResetSerializer,
+    PasswordChangeSerializer,
 )
-from .google_auth import get_or_create_google_user, verify_google_id_token
+from .google_auth import (
+    exchange_google_auth_code,
+    get_or_create_google_user,
+    verify_google_id_token,
+)
 from .email_otp import send_email_otp, verify_email_otp
+from .password_reset import (
+    clear_password_reset_otp,
+    send_password_reset_otp,
+    verify_password_reset_otp,
+)
 from .models import Profile
 from .geo import profile_coordinates, haversine_km, CITY_COORDS
 from matching.models import Swipe
+
+User = get_user_model()
 
 
 class RegisterView(generics.CreateAPIView):
@@ -69,7 +87,16 @@ class GoogleAuthView(APIView):
         serializer.is_valid(raise_exception=True)
 
         try:
-            idinfo = verify_google_id_token(serializer.validated_data["id_token"])
+            validated = serializer.validated_data
+            if validated.get("code"):
+                id_token = exchange_google_auth_code(
+                    validated["code"],
+                    validated["redirect_uri"],
+                )
+            else:
+                id_token = validated["id_token"]
+
+            idinfo = verify_google_id_token(id_token)
             user, _created = get_or_create_google_user(idinfo)
         except (ValueError, GoogleAuthError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -90,6 +117,42 @@ class GoogleAuthView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class GoogleOAuthCallbackView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        error = request.GET.get("error")
+        code = request.GET.get("code")
+        login_error_url = f"{settings.FRONTEND_URL}/login?error=google_auth"
+
+        if error or not code:
+            return redirect(login_error_url)
+
+        try:
+            id_token = exchange_google_auth_code(code, settings.GOOGLE_OAUTH_REDIRECT_URI)
+            idinfo = verify_google_id_token(id_token)
+            user, _created = get_or_create_google_user(idinfo)
+        except (ValueError, GoogleAuthError):
+            return redirect(login_error_url)
+        except Exception:
+            return redirect(login_error_url)
+
+        refresh = RefreshToken.for_user(user)
+        try:
+            onboarded = user.profile.is_onboarded
+        except Profile.DoesNotExist:
+            onboarded = False
+
+        params = urlencode(
+            {
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "onboarded": "1" if onboarded else "0",
+            }
+        )
+        return redirect(f"{settings.FRONTEND_URL}/login/google/complete?{params}")
 
 
 class EmailOtpSendView(APIView):
@@ -153,6 +216,123 @@ class EmailOtpVerifyView(APIView):
         )
 
 
+class PasswordForgotView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Request a password reset code",
+        request=PasswordForgotSerializer,
+        auth=[],
+    )
+    def post(self, request):
+        serializer = PasswordForgotSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"].strip().lower()
+
+        user = User.objects.filter(email__iexact=email).first()
+        if user and user.has_usable_password():
+            try:
+                send_password_reset_otp(email)
+            except ValueError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            except Exception:
+                return Response(
+                    {"detail": "Could not send password reset email. Check Gmail SMTP settings."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        return Response(
+            {
+                "sent": True,
+                "message": "If an account exists for this email, a reset code has been sent.",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordResetView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Reset password with email OTP",
+        request=PasswordResetSerializer,
+        auth=[],
+    )
+    def post(self, request):
+        serializer = PasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"].strip().lower()
+        otp = serializer.validated_data["otp"].strip()
+        password = serializer.validated_data["password"]
+
+        user = User.objects.filter(email__iexact=email).first()
+        if not user or not user.has_usable_password():
+            return Response(
+                {"detail": "Invalid or expired reset code."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not verify_password_reset_otp(email, otp):
+            return Response(
+                {"detail": "Invalid or expired reset code."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(password)
+        user.save(update_fields=["password"])
+        clear_password_reset_otp(email)
+
+        return Response(
+            {"reset": True, "message": "Password updated successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordChangeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Change password for the authenticated user",
+        request=PasswordChangeSerializer,
+    )
+    def post(self, request):
+        serializer = PasswordChangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        if not user.has_usable_password():
+            return Response(
+                {
+                    "detail": (
+                        "This account uses Google sign-in. "
+                        "Use Forgot password on the login page to set a password."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        current_password = serializer.validated_data["current_password"]
+        new_password = serializer.validated_data["new_password"]
+
+        if not user.check_password(current_password):
+            return Response(
+                {"detail": "Current password is incorrect."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+
+        return Response(
+            {"changed": True, "message": "Password updated successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+
 class MyProfileView(APIView):
     @extend_schema(tags=["Profiles"], summary="Get my profile")
     def get(self, request):
@@ -193,10 +373,33 @@ class ProfilePhotoUploadView(APIView):
         if not image:
             return Response({"detail": "No image provided."}, status=status.HTTP_400_BAD_REQUEST)
 
-        timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"profile_{request.user.id}_{timestamp}_{image.name}"
-        saved_path = default_storage.save(f"profile_photos/{filename}", image)
-        image_url = request.build_absolute_uri(f"{settings.MEDIA_URL}{saved_path}")
+        pipeline = PhotoVerificationPipeline()
+        try:
+            result = pipeline.analyze_file(image, user_id=request.user.id)
+        except Exception as exc:
+            return Response({"detail": f"Image analysis failed: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not result.face_detected:
+            return Response(
+                {"detail": "No human face detected. Please upload a clear photo showing your face."},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        strict_reject = getattr(settings, "PHOTO_VERIFICATION_STRICT_REJECT", True)
+        if result.status == PhotoStatus.REJECTED and strict_reject:
+            return Response(
+                {"detail": "; ".join(result.rejection_reasons) or "Photo rejected."},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        try:
+            image.seek(0)
+            image_url = upload_profile_photo(image, user_id=request.user.id)
+        except CloudinaryNotConfiguredError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
         return Response({"image_url": image_url}, status=status.HTTP_201_CREATED)
 
 

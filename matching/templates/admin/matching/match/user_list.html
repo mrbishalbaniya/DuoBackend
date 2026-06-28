@@ -1,0 +1,80 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans "Home" %}</a>
+  &rsaquo;
+  <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; {{ opts.verbose_name_plural|capfirst }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <h3 class="card-title mb-0">{{ title }}</h3>
+    <form method="get" class="form-inline">
+      <input
+        type="search"
+        name="q"
+        value="{{ search_query }}"
+        class="form-control form-control-sm"
+        placeholder="Search username, email, name, phone"
+      />
+      <button type="submit" class="btn btn-sm btn-primary ml-2">{% trans "Search" %}</button>
+      {% if search_query %}
+        <a href="{% url 'admin:matching_match_changelist' %}" class="btn btn-sm btn-secondary ml-2">{% trans "Clear" %}</a>
+      {% endif %}
+    </form>
+  </div>
+  <div class="card-body table-responsive p-0">
+    <table class="table table-striped table-hover mb-0">
+      <thead>
+        <tr>
+          <th>{% trans "ID" %}</th>
+          <th>{% trans "Username" %}</th>
+          <th>{% trans "Full name" %}</th>
+          <th>{% trans "Email" %}</th>
+          <th>{% trans "Phone" %}</th>
+          <th>{% trans "Total matches" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+          <tr>
+            <td>{{ user.id }}</td>
+            <td>
+              <a href="{% url 'admin:matching_match_user' user.id %}">{{ user.username }}</a>
+            </td>
+            <td>
+              {% if user.profile %}
+                {% if user.profile.full_name %}
+                  <a href="{% url 'admin:matching_match_user' user.id %}">{{ user.profile.full_name }}</a>
+                {% else %}
+                  —
+                {% endif %}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ user.email|default:"—" }}</td>
+            <td>
+              {% if user.profile and user.profile.phone_number %}
+                {{ user.profile.phone_country_code }} {{ user.profile.phone_number }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ user.match_count }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="6" class="text-center text-muted py-4">{% trans "No users with matches found." %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

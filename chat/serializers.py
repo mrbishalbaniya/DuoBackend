@@ -46,17 +46,31 @@ class ConversationSerializer(serializers.ModelSerializer):
     other_user_profile = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     match_id = serializers.IntegerField(source='match.id', read_only=True)
+    other_user_nickname = serializers.SerializerMethodField()
 
     is_other_user_typing = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
-        fields = ['id', 'match_id', 'other_user_profile', 'last_message', 'created_at', 'is_other_user_typing']
+        fields = [
+            'id',
+            'match_id',
+            'other_user_profile',
+            'other_user_nickname',
+            'last_message',
+            'created_at',
+            'is_other_user_typing',
+        ]
 
     def get_other_user_profile(self, obj):
         request_user = self.context.get('request').user
         other_user = obj.match.get_other_user(request_user)
         return ProfileSerializer(other_user.profile).data
+
+    def get_other_user_nickname(self, obj):
+        request_user = self.context.get('request').user
+        pref = obj.preferences.filter(user=request_user).first()
+        return pref.nickname if pref else ''
 
     def get_last_message(self, obj):
         msg = obj.messages.last()
