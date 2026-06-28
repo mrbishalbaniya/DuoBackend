@@ -21,6 +21,12 @@ SECRET_KEY = config("SECRET_KEY", default="django-insecure-duo-dev-key-change-in
 DEBUG = config("DEBUG", default=True, cast=bool)
 ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(",")
 
+# Render/Vercel sit behind HTTPS proxies — required for admin CSRF and secure cookies.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
+
 INSTALLED_APPS = [
     "daphne",
     "jazzmin",
@@ -154,7 +160,27 @@ CORS_ALLOWED_ORIGINS = config(
 ).split(",")
 CORS_ALLOW_CREDENTIALS = True
 
-FRONTEND_URL = config("FRONTEND_URL", default="http://localhost:3000")
+FRONTEND_URL = config("FRONTEND_URL", default="http://localhost:3000").rstrip("/")
+
+_csrf_trusted = {
+    origin.strip().rstrip("/")
+    for origin in config("CSRF_TRUSTED_ORIGINS", default="").split(",")
+    if origin.strip()
+}
+for host in ALLOWED_HOSTS:
+    host = host.strip()
+    if host:
+        _csrf_trusted.add(f"https://{host}")
+        if host in ("localhost", "127.0.0.1"):
+            _csrf_trusted.add(f"http://{host}:8000")
+            _csrf_trusted.add(f"http://{host}:8001")
+if FRONTEND_URL:
+    _csrf_trusted.add(FRONTEND_URL)
+for origin in CORS_ALLOWED_ORIGINS:
+    if origin.strip():
+        _csrf_trusted.add(origin.strip().rstrip("/"))
+CSRF_TRUSTED_ORIGINS = sorted(_csrf_trusted)
+
 GOOGLE_OAUTH_CLIENT_ID = config("GOOGLE_OAUTH_CLIENT_ID", default="")
 GOOGLE_OAUTH_CLIENT_SECRET = config("GOOGLE_OAUTH_CLIENT_SECRET", default="")
 GOOGLE_OAUTH_REDIRECT_URI = config(
