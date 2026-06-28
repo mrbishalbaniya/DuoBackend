@@ -2,14 +2,15 @@ from datetime import timedelta
 import os
 from pathlib import Path
 
-from decouple import Config, RepositoryEnv, RepositorySecret
+from decouple import Config, RepositoryEmpty, RepositoryEnv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 _env_file = BASE_DIR / ".env"
-_config_repos = [RepositorySecret()]
 if _env_file.exists():
-    _config_repos.append(RepositoryEnv(_env_file))
-config = Config(*_config_repos)
+    config = Config(RepositoryEnv(_env_file))
+else:
+    # Render/production: env vars come from the dashboard (Config checks os.environ first).
+    config = Config(RepositoryEmpty())
 
 
 def env(key: str, default=""):
