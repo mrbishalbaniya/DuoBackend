@@ -37,6 +37,15 @@ def _normalize_origin(value: str) -> str:
     return f"https://{value}"
 
 
+def _parse_origins(value: str) -> list[str]:
+    """Parse comma/newline-separated origins; ignore accidental key names pasted into values."""
+    origins: list[str] = []
+    for part in value.replace("\n", ",").split(","):
+        origin = part.strip().rstrip("/")
+        if origin.startswith("http://") or origin.startswith("https://"):
+            origins.append(origin)
+    return origins
+
 SECRET_KEY = config("SECRET_KEY", default="django-insecure-duo-dev-key-change-in-production-2024")
 DEBUG = config("DEBUG", default=True, cast=bool)
 ALLOWED_HOSTS = [
@@ -179,10 +188,12 @@ PHOTO_AI_MODEL_PATH = env("PHOTO_AI_MODEL_PATH")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CORS_ALLOWED_ORIGINS = config(
-    "CORS_ALLOWED_ORIGINS",
-    default="http://localhost:3000,http://localhost:3001,http://localhost:8081,http://localhost:8082",
-).split(",")
+CORS_ALLOWED_ORIGINS = _parse_origins(
+    config(
+        "CORS_ALLOWED_ORIGINS",
+        default="http://localhost:3000,http://localhost:3001,http://localhost:8081,http://localhost:8082",
+    )
+)
 CORS_ALLOW_CREDENTIALS = True
 
 FRONTEND_URL = _normalize_origin(config("FRONTEND_URL", default="http://localhost:3000"))
