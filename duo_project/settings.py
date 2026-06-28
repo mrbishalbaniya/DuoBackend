@@ -93,6 +93,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "drf_spectacular",
     "corsheaders",
+    "site_config",
     "accounts",
     "matching",
     "chat",
@@ -262,8 +263,6 @@ SUBSCRIPTION_PLAN_DESCRIPTION = config(
 )
 ESEWA_PRODUCT_CODE = env("ESEWA_PRODUCT_CODE", default="EPAYTEST" if DEBUG else "").strip()
 ESEWA_SECRET_KEY = env("ESEWA_SECRET_KEY", default="8gBm/:&EnhH.1/q" if DEBUG else "").strip()
-if not DEBUG and (not ESEWA_PRODUCT_CODE or not ESEWA_SECRET_KEY):
-    raise ValueError("ESEWA_PRODUCT_CODE and ESEWA_SECRET_KEY are required when DEBUG=False.")
 ESEWA_FORM_URL = config(
     "ESEWA_FORM_URL",
     default="https://rc-epay.esewa.com.np/api/epay/main/v2/form",
@@ -437,6 +436,11 @@ JAZZMIN_SETTINGS = {
             "permissions": ["auth.view_user"],
         },
         {
+            "name": "Integration settings",
+            "url": "admin:site_config_sitesettings_change",
+            "permissions": ["site_config.change_sitesettings"],
+        },
+        {
             "name": "API Docs",
             "url": "/api/docs/",
             "new_window": True,
@@ -458,8 +462,16 @@ JAZZMIN_SETTINGS = {
         "chat.Conversation": "fas fa-comments",
         "chat.Message": "fas fa-envelope",
         "subscriptions.SubscriptionPayment": "fas fa-crown",
+        "site_config.SiteSettings": "fas fa-sliders-h",
     },
-    "order_with_respect_to": ["accounts", "matching", "chat", "subscriptions", "auth"],
+    "order_with_respect_to": [
+        "site_config",
+        "accounts",
+        "matching",
+        "chat",
+        "subscriptions",
+        "auth",
+    ],
     "colorscale": "indigo",
 }
 
@@ -493,3 +505,16 @@ JAZZMIN_UI_TWEAKS = {
         "success": "btn-success",
     },
 }
+
+_sentry_dsn = env("SENTRY_DSN")
+if _sentry_dsn and not DEBUG:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[DjangoIntegration()],
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+        environment="production",
+    )
