@@ -17,12 +17,37 @@ def env(key: str, default=""):
     """Read from process env first, then DuoBackend/.env."""
     return os.environ.get(key) or config(key, default=default)
 
+
+def _normalize_host(value: str) -> str:
+    """Strip scheme/path so ALLOWED_HOSTS works when env includes a full URL."""
+    value = value.strip()
+    if value.startswith("https://"):
+        value = value[8:]
+    elif value.startswith("http://"):
+        value = value[7:]
+    return value.split("/")[0].strip()
+
+
+def _normalize_origin(value: str) -> str:
+    value = value.strip().rstrip("/")
+    if not value:
+        return ""
+    if value.startswith("http://") or value.startswith("https://"):
+        return value
+    return f"https://{value}"
+
+
 SECRET_KEY = config("SECRET_KEY", default="django-insecure-duo-dev-key-change-in-production-2024")
 DEBUG = config("DEBUG", default=True, cast=bool)
-ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = [
+    host
+    for host in (_normalize_host(part) for part in config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(","))
+    if host
+]
 
 # Render/Vercel sit behind HTTPS proxies — required for admin CSRF and secure cookies.
 if not DEBUG:
+    USE_X_FORWARDED_HOST = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = True
@@ -160,25 +185,26 @@ CORS_ALLOWED_ORIGINS = config(
 ).split(",")
 CORS_ALLOW_CREDENTIALS = True
 
-FRONTEND_URL = config("FRONTEND_URL", default="http://localhost:3000").rstrip("/")
+FRONTEND_URL = _normalize_origin(config("FRONTEND_URL", default="http://localhost:3000"))
 
 _csrf_trusted = {
-    origin.strip().rstrip("/")
+    _normalize_origin(origin)
     for origin in config("CSRF_TRUSTED_ORIGINS", default="").split(",")
     if origin.strip()
 }
 for host in ALLOWED_HOSTS:
-    host = host.strip()
-    if host:
+    if host in ("localhost", "127.0.0.1"):
+        _csrf_trusted.add(f"http://{host}:8000")
+        _csrf_trusted.add(f"http://{host}:8001")
+        _csrf_trusted.add(f"http://{host}:3000")
+    else:
         _csrf_trusted.add(f"https://{host}")
-        if host in ("localhost", "127.0.0.1"):
-            _csrf_trusted.add(f"http://{host}:8000")
-            _csrf_trusted.add(f"http://{host}:8001")
 if FRONTEND_URL:
     _csrf_trusted.add(FRONTEND_URL)
 for origin in CORS_ALLOWED_ORIGINS:
-    if origin.strip():
-        _csrf_trusted.add(origin.strip().rstrip("/"))
+    normalized = _normalize_origin(origin)
+    if normalized:
+        _csrf_trusted.add(normalized)
 CSRF_TRUSTED_ORIGINS = sorted(_csrf_trusted)
 
 GOOGLE_OAUTH_CLIENT_ID = config("GOOGLE_OAUTH_CLIENT_ID", default="")
