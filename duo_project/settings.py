@@ -2,14 +2,14 @@ from datetime import timedelta
 import os
 from pathlib import Path
 
-from decouple import Config, RepositoryEnv
+from decouple import Config, RepositoryEnv, RepositorySecret
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 _env_file = BASE_DIR / ".env"
+_config_repos = [RepositorySecret()]
 if _env_file.exists():
-    config = Config(RepositoryEnv(_env_file))
-else:
-    config = Config()
+    _config_repos.append(RepositoryEnv(_env_file))
+config = Config(*_config_repos)
 
 
 def env(key: str, default=""):
