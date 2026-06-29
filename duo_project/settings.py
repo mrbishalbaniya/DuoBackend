@@ -436,16 +436,12 @@ JAZZMIN_SETTINGS = {
             "permissions": ["auth.view_user"],
         },
         {
-            "name": "Integration settings",
-            "url": "admin:site_config_sitesettings_change",
-            "permissions": ["site_config.change_sitesettings"],
-        },
-        {
             "name": "API Docs",
             "url": "/api/docs/",
             "new_window": True,
             "permissions": ["auth.view_user"],
         },
+        {"model": "site_config.SiteSettings"},
         {"model": "accounts.Profile"},
     ],
     "show_sidebar": True,

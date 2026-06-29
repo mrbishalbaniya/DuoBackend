@@ -4,6 +4,7 @@ from django.conf import settings
 from django.http import HttpResponseRedirect
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
+from duo_project.runtime_config import get_integration_settings
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -80,9 +81,10 @@ class InitiatePaymentView(APIView):
             payment, form_data = create_payment_request(request.user, plan_id=plan_id)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        cfg = get_integration_settings()
         return Response(
             {
-                "payment_url": settings.ESEWA_FORM_URL,
+                "payment_url": cfg.esewa_form_url,
                 "transaction_uuid": payment.transaction_uuid,
                 "form": form_data,
             }
@@ -115,8 +117,9 @@ class VerifyPaymentView(APIView):
         if payment.is_active:
             return Response({"status": "COMPLETE", "is_premium": True})
 
+        cfg = get_integration_settings()
         status_data = check_transaction_status(
-            product_code=settings.ESEWA_PRODUCT_CODE,
+            product_code=cfg.esewa_product_code,
             total_amount=payment.total_amount,
             transaction_uuid=payment.transaction_uuid,
         )
@@ -166,7 +169,8 @@ class EsewaSuccessView(APIView):
             logger.exception("Failed to decode eSewa success payload")
             return HttpResponseRedirect(redirect_url)
 
-        if not verify_response_signature(payload, settings.ESEWA_SECRET_KEY):
+        cfg = get_integration_settings()
+        if not verify_response_signature(payload, cfg.esewa_secret_key):
             logger.warning("Invalid eSewa success signature for %s", payload.get("transaction_uuid"))
             return HttpResponseRedirect(redirect_url)
 

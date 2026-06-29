@@ -7,7 +7,7 @@ import os
 
 import cloudinary
 import cloudinary.uploader
-from django.conf import settings
+from duo_project.runtime_config import get_integration_settings
 
 PROFILE_IMAGE_TYPES = {
     "image/jpeg",
@@ -32,14 +32,15 @@ class CloudinaryNotConfiguredError(Exception):
 
 
 def _ensure_configured() -> None:
-    cloud_name = getattr(settings, "CLOUDINARY_CLOUD_NAME", "")
-    api_key = getattr(settings, "CLOUDINARY_API_KEY", "")
-    api_secret = getattr(settings, "CLOUDINARY_API_SECRET", "")
+    cfg = get_integration_settings()
+    cloud_name = cfg.cloudinary_cloud_name
+    api_key = cfg.cloudinary_api_key
+    api_secret = cfg.cloudinary_api_secret
 
     if not cloud_name or not api_key or not api_secret:
         raise CloudinaryNotConfiguredError(
-            "Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, "
-            "CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in DuoBackend/.env"
+            "Cloudinary is not configured. Set credentials in Admin → Integration settings "
+            "or CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in .env."
         )
 
     cloudinary.config(
@@ -83,7 +84,7 @@ def _safe_stem(filename: str) -> str:
 
 def _upload_kwargs(**options):
     kwargs = dict(options)
-    preset = getattr(settings, "CLOUDINARY_UPLOAD_PRESET", "")
+    preset = get_integration_settings().cloudinary_upload_preset
     if preset:
         kwargs["upload_preset"] = preset
     return kwargs
@@ -91,6 +92,7 @@ def _upload_kwargs(**options):
 
 def upload_profile_photo(uploaded_file, *, user_id: int) -> str:
     _ensure_configured()
+    cfg = get_integration_settings()
     content_type = _validate_upload(
         uploaded_file,
         allowed_types=PROFILE_IMAGE_TYPES,
@@ -101,7 +103,7 @@ def upload_profile_photo(uploaded_file, *, user_id: int) -> str:
     result = cloudinary.uploader.upload(
         uploaded_file,
         **_upload_kwargs(
-            folder=settings.CLOUDINARY_PROFILE_FOLDER,
+            folder=cfg.cloudinary_profile_folder,
             public_id=f"user_{user_id}_{stem}",
             resource_type="image",
             overwrite=True,
@@ -115,6 +117,7 @@ def upload_profile_photo(uploaded_file, *, user_id: int) -> str:
 
 def upload_verification_selfie(uploaded_file, *, user_id: int) -> str:
     _ensure_configured()
+    cfg = get_integration_settings()
     content_type = _validate_upload(
         uploaded_file,
         allowed_types=PROFILE_IMAGE_TYPES,
@@ -122,11 +125,10 @@ def upload_verification_selfie(uploaded_file, *, user_id: int) -> str:
     )
 
     stem = _safe_stem(getattr(uploaded_file, "name", "selfie"))
-    folder = getattr(settings, "CLOUDINARY_VERIFICATION_FOLDER", "duo/verification_selfies")
     result = cloudinary.uploader.upload(
         uploaded_file,
         **_upload_kwargs(
-            folder=folder,
+            folder=cfg.cloudinary_verification_folder,
             public_id=f"verify_{user_id}_{stem}",
             resource_type="image",
             overwrite=True,
@@ -140,6 +142,7 @@ def upload_verification_selfie(uploaded_file, *, user_id: int) -> str:
 
 def upload_chat_media(uploaded_file, *, user_id: int) -> str:
     _ensure_configured()
+    cfg = get_integration_settings()
     _validate_upload(
         uploaded_file,
         allowed_types=CHAT_MEDIA_TYPES,
@@ -151,7 +154,7 @@ def upload_chat_media(uploaded_file, *, user_id: int) -> str:
     result = cloudinary.uploader.upload(
         uploaded_file,
         **_upload_kwargs(
-            folder=settings.CLOUDINARY_CHAT_FOLDER,
+            folder=cfg.cloudinary_chat_folder,
             public_id=f"user_{user_id}_{stem}",
             resource_type="auto",
             overwrite=True,

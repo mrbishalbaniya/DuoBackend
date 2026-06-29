@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from django.conf import settings
+from duo_project.runtime_config import get_integration_settings
 
 
 def _format_amount(value: Decimal | str | float) -> str:
@@ -87,7 +87,7 @@ def check_transaction_status(
             "transaction_uuid": transaction_uuid,
         }
     )
-    url = f"{settings.ESEWA_STATUS_URL.rstrip('/')}/?{query}"
+    url = f"{get_integration_settings().esewa_status_url.rstrip('/')}/?{query}"
     request = Request(url, headers={"Accept": "application/json"})
     with urlopen(request, timeout=15) as response:
         return json.loads(response.read().decode("utf-8"))

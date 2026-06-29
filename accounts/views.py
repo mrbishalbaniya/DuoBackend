@@ -143,7 +143,10 @@ class GoogleOAuthCallbackView(APIView):
             return redirect(login_error_url)
 
         try:
-            id_token = exchange_google_auth_code(code, settings.GOOGLE_OAUTH_REDIRECT_URI)
+            from duo_project.runtime_config import get_integration_settings
+
+            cfg = get_integration_settings()
+            id_token = exchange_google_auth_code(code, cfg.google_redirect_uri)
             idinfo = verify_google_id_token(id_token)
             user, _created = get_or_create_google_user(idinfo)
         except (ValueError, GoogleAuthError):

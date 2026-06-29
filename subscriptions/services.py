@@ -4,8 +4,9 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
-from django.conf import settings
 from django.utils import timezone
+
+from duo_project.runtime_config import get_integration_settings
 
 from .esewa import _format_amount, generate_payment_signature
 from .models import SubscriptionPayment, SubscriptionPlan
@@ -165,11 +166,18 @@ def create_payment_request(user, plan_id: str | None = None) -> tuple[Subscripti
         status=SubscriptionPayment.STATUS_PENDING,
     )
 
+    cfg = get_integration_settings()
+    if not cfg.esewa_product_code or not cfg.esewa_secret_key:
+        raise ValueError(
+            "eSewa is not configured. Set credentials in Admin → Integration settings "
+            "or ESEWA_PRODUCT_CODE and ESEWA_SECRET_KEY in the environment."
+        )
+
     signature = generate_payment_signature(
         total_amount=total_amount,
         transaction_uuid=transaction_uuid,
-        product_code=settings.ESEWA_PRODUCT_CODE,
-        secret_key=settings.ESEWA_SECRET_KEY,
+        product_code=cfg.esewa_product_code,
+        secret_key=cfg.esewa_secret_key,
     )
 
     form_data = {
@@ -177,11 +185,11 @@ def create_payment_request(user, plan_id: str | None = None) -> tuple[Subscripti
         "tax_amount": _format_amount(tax_amount),
         "total_amount": _format_amount(total_amount),
         "transaction_uuid": transaction_uuid,
-        "product_code": settings.ESEWA_PRODUCT_CODE,
+        "product_code": cfg.esewa_product_code,
         "product_service_charge": _format_amount(service_charge),
         "product_delivery_charge": _format_amount(delivery_charge),
-        "success_url": settings.ESEWA_SUCCESS_URL,
-        "failure_url": settings.ESEWA_FAILURE_URL,
+        "success_url": cfg.esewa_success_url,
+        "failure_url": cfg.esewa_failure_url,
         "signed_field_names": "total_amount,transaction_uuid,product_code",
         "signature": signature,
     }

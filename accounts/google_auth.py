@@ -1,5 +1,5 @@
-from django.conf import settings
 from django.contrib.auth import get_user_model
+from duo_project.runtime_config import get_integration_settings
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 
@@ -9,7 +9,8 @@ User = get_user_model()
 
 
 def verify_google_id_token(token: str) -> dict:
-    client_id = settings.GOOGLE_OAUTH_CLIENT_ID
+    cfg = get_integration_settings()
+    client_id = cfg.google_client_id
     if not client_id:
         raise ValueError("Google OAuth is not configured.")
 
@@ -30,8 +31,9 @@ def verify_google_id_token(token: str) -> dict:
 
 
 def exchange_google_auth_code(code: str, redirect_uri: str) -> str:
+    cfg = get_integration_settings()
     redirect_uri = redirect_uri.rstrip("/")
-    allowed = [uri.rstrip("/") for uri in settings.GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS]
+    allowed = [uri.rstrip("/") for uri in cfg.google_allowed_redirect_uris]
     if redirect_uri not in allowed:
         raise ValueError("Redirect URI is not allowed.")
 
@@ -40,8 +42,8 @@ def exchange_google_auth_code(code: str, redirect_uri: str) -> str:
     import urllib.parse
     import urllib.request
 
-    client_id = settings.GOOGLE_OAUTH_CLIENT_ID
-    client_secret = settings.GOOGLE_OAUTH_CLIENT_SECRET
+    client_id = cfg.google_client_id
+    client_secret = cfg.google_client_secret
     if not client_id or not client_secret:
         raise ValueError("Google OAuth is not configured.")
 
