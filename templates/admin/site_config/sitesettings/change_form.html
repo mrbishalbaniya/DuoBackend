@@ -1,0 +1,25 @@
+{% extends "admin/change_form.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+  .duo-settings-note {
+    margin: 0 0 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    background: rgba(13, 110, 253, 0.1);
+    border: 1px solid rgba(13, 110, 253, 0.2);
+    color: inherit;
+    font-size: 0.9rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<p class="duo-settings-note">
+  Password and secret fields are hidden after save. If you see
+  <strong>A value is saved</strong> under a field, it is stored — leave it blank to keep it,
+  or type a new value to replace it. Use <strong>Show</strong> while typing.
+</p>
+{{ block.super }}
+{% endblock %}

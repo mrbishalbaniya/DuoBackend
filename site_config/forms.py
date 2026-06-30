@@ -1,6 +1,7 @@
 from django import forms
 
 from site_config.models import SiteSettings
+from site_config.widgets import RevealablePasswordInput
 
 SECRET_FIELDS = (
     "google_client_secret",
@@ -13,28 +14,38 @@ SECRET_FIELDS = (
 class SiteSettingsForm(forms.ModelForm):
     class Meta:
         model = SiteSettings
-        fields = "__all__"
+        exclude = ("id",)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        instance = self.instance
+
         for name in SECRET_FIELDS:
             field = self.fields.get(name)
             if not field:
                 continue
-            field.widget = forms.PasswordInput(render_value=False)
+
+            configured = bool(instance and instance.pk and getattr(instance, name, ""))
+            field.widget = RevealablePasswordInput(configured=configured)
             field.required = False
             field.help_text = (
-                field.help_text or "Leave blank when saving to keep the current value."
+                "Leave blank when saving to keep the current value."
+                if configured
+                else "Enter the secret value."
             )
 
     def save(self, commit=True):
         instance = super().save(commit=False)
-        if instance.pk:
-            previous = SiteSettings.objects.filter(pk=instance.pk).first()
-            if previous:
-                for name in SECRET_FIELDS:
-                    if not self.cleaned_data.get(name):
-                        setattr(instance, name, getattr(previous, name))
+        instance.pk = instance.pk or SiteSettings.SINGLETON_PK
+
+        previous = SiteSettings.objects.filter(pk=SiteSettings.SINGLETON_PK).first()
+        if previous:
+            for name in SECRET_FIELDS:
+                new_value = self.cleaned_data.get(name)
+                if not new_value:
+                    setattr(instance, name, getattr(previous, name))
+
         if commit:
             instance.save()
+            self.save_m2m()
         return instance
