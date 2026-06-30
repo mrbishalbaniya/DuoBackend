@@ -8,6 +8,7 @@ from drf_spectacular.views import (
 )
 from rest_framework.permissions import AllowAny
 
+from duo_project.admin_account import admin_account
 from duo_project.health import health_check
 
 
@@ -28,6 +29,7 @@ class PublicRedocView(SpectacularRedocView):
 
 urlpatterns = [
     path("health/", health_check, name="health"),
+    path("admin/account/", admin_account, name="admin-account"),
     path("admin/", admin.site.urls),
     path("api/auth/", include("accounts.urls")),
     path("api/profiles/", include("accounts.profile_urls")),

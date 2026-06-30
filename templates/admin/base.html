@@ -1,0 +1,35 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  /* Keep account / user controls visible when search fields wrap */
+  .main-header .navbar-nav.ms-auto {
+    flex-shrink: 0;
+  }
+  .main-header form.d-flex {
+    max-width: 200px;
+  }
+  .main-header .form-control-navbar {
+    min-width: 0;
+  }
+  @media (max-width: 1200px) {
+    .main-header form.d-flex {
+      max-width: 150px;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const toggle = document.querySelector('.navbar-nav.ms-auto .nav-item.dropdown > a[title]');
+    if (toggle && !toggle.getAttribute("title")) {
+      toggle.setAttribute("title", "{% trans 'Account & Logout' %}");
+    }
+  });
+</script>
+{% endblock %}

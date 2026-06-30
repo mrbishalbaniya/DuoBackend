@@ -13,6 +13,7 @@ services:
       python manage.py collectstatic --noinput
     startCommand: >-
       python manage.py migrate --noinput &&
+      python manage.py ensure_superuser &&
       daphne -b 0.0.0.0 -p $PORT duo_project.asgi:application
     healthCheckPath: /health/
     envVars:
@@ -69,6 +70,12 @@ services:
       - key: EMAIL_HOST_USER
         sync: false
       - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
         sync: false
 
   - type: redis

@@ -21,9 +21,9 @@ BLUR_WARNING_THRESHOLD = 120.0
 BRIGHTNESS_LOW_WARNING = 45.0
 BRIGHTNESS_HIGH_WARNING = 210.0
 
-# AI-generated probability
-AI_FLAG_THRESHOLD = 0.80
-AI_REJECT_THRESHOLD = 0.95
+# AI-generated probability (multi-signal ensemble; see ai_detection.py)
+AI_FLAG_THRESHOLD = 0.72
+AI_REJECT_THRESHOLD = 0.88
 
 # Duplicate similarity (0–1 cosine on perceptual hash bits)
 DUPLICATE_FLAG_THRESHOLD = 0.72

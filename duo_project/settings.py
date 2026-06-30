@@ -122,7 +122,7 @@ ROOT_URLCONF = "duo_project.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -427,12 +427,18 @@ JAZZMIN_SETTINGS = {
     "login_logo": None,
     "welcome_sign": "Welcome to Duo Administrative Portal",
     "copyright": "Duo Matrimonial",
-    "search_model": ["accounts.Profile", "auth.User"],
+    "search_model": "auth.User",
     "user_avatar": None,
     "topmenu_links": [
         {
             "name": "Home",
             "url": "admin:index",
+            "permissions": ["auth.view_user"],
+        },
+        {
+            "name": "My account",
+            "url": "admin-account",
+            "icon": "fas fa-user-circle",
             "permissions": ["auth.view_user"],
         },
         {
@@ -443,6 +449,19 @@ JAZZMIN_SETTINGS = {
         },
         {"model": "site_config.SiteSettings"},
         {"model": "accounts.Profile"},
+    ],
+    "usermenu_links": [
+        {
+            "name": "My account",
+            "url": "admin-account",
+            "icon": "fas fa-user-circle",
+        },
+        {
+            "name": "Change password",
+            "url": "admin:password_change",
+            "icon": "fas fa-key",
+        },
+        {"model": "auth.user"},
     ],
     "show_sidebar": True,
     "navigation_expanded": True,
@@ -480,8 +499,8 @@ JAZZMIN_UI_TWEAKS = {
     "accent": "accent-primary",
     "navbar": "navbar-dark",
     "no_navbar_border": False,
-    "navbar_fixed": False,
-    "layout_fixed": False,
+    "navbar_fixed": True,
+    "layout_fixed": True,
     "footer_fixed": False,
     "sidebar_fixed": False,
     "sidebar": "sidebar-dark-primary",

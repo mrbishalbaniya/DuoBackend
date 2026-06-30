@@ -65,7 +65,11 @@ class PhotoVerificationPipeline:
     def _run(self, loaded: LoadedImage, *, user_id: int, is_primary: bool) -> PhotoVerificationResult:
         face = detect_faces(loaded.rgb)
         quality = analyze_quality(loaded.rgb, loaded.width, loaded.height)
-        ai = detect_ai_generated(loaded.rgb)
+        ai = detect_ai_generated(
+            loaded.rgb,
+            face_boxes=face.face_boxes,
+            exif=loaded.exif,
+        )
         duplicate = detect_duplicate(
             hash_bits=loaded.hash_bits,
             face_embedding=face.embedding,
