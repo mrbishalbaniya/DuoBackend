@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from django.conf import settings
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import parsers, status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_verification_selfie
 from photo_verification.constants import LIVENESS_STEPS, VerificationStatus
+from photo_verification.handoff import build_handoff_url, send_verification_handoff_email
 from photo_verification.models import UserVerification
 from photo_verification.services.image_utils import load_image_from_file
 from photo_verification.services.liveness_detection import capture_baseline_metrics, validate_liveness_step
@@ -40,6 +40,26 @@ def _get_session(user, session_token) -> UserVerification | None:
         return None
 
 
+def _get_handoff_session(session_token, *, for_write: bool = False) -> UserVerification | None:
+    """Resolve session by link token (no login required for cross-device handoff)."""
+    if not session_token:
+        return None
+    try:
+        session = UserVerification.objects.get(session_token=session_token)
+    except UserVerification.DoesNotExist:
+        return None
+
+    expired = session.expires_at and session.expires_at <= timezone.now()
+    if for_write:
+        if expired:
+            return None
+        return session
+
+    if expired and session.verification_status == VerificationStatus.PENDING.value:
+        return None
+    return session
+
+
 def _status_payload(session: UserVerification) -> dict:
     return {
         "status": session.verification_status,
@@ -50,6 +70,14 @@ def _status_payload(session: UserVerification) -> dict:
         "rejection_reasons": session.rejection_reasons or [],
         "session": UserVerificationSerializer(session).data,
     }
+
+
+def _session_detail_payload(session: UserVerification) -> dict:
+    payload = _status_payload(session)
+    payload["liveness_steps"] = list(LIVENESS_STEPS)
+    payload["handoff_url"] = build_handoff_url(session.session_token)
+    payload["expires_at"] = session.expires_at
+    return payload
 
 
 class VerificationStartView(APIView):
@@ -72,6 +100,7 @@ class VerificationStartView(APIView):
                 "expires_at": session.expires_at,
                 "instructions": INSTRUCTIONS,
                 "liveness_steps": list(LIVENESS_STEPS),
+                "handoff_url": build_handoff_url(session.session_token),
             },
             status=status.HTTP_201_CREATED if not existing else status.HTTP_200_OK,
         )
@@ -80,7 +109,7 @@ class VerificationStartView(APIView):
 class VerificationLivenessView(APIView):
     """Submit a liveness challenge frame (smile, blink, head_left, head_right)."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
 
     @extend_schema(
@@ -107,7 +136,7 @@ class VerificationLivenessView(APIView):
         if not session_token or not image or step not in LIVENESS_STEPS:
             return Response({"detail": "session_token, step, and image are required."}, status=400)
 
-        session = _get_session(request.user, session_token)
+        session = _get_handoff_session(session_token, for_write=True)
         if not session:
             return Response({"detail": "Invalid or expired session."}, status=404)
         if session.verification_status != VerificationStatus.PENDING.value:
@@ -142,7 +171,7 @@ class VerificationLivenessView(APIView):
 
 
 class VerificationSelfieView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
 
     @extend_schema(
@@ -166,7 +195,7 @@ class VerificationSelfieView(APIView):
         if not session_token or not image:
             return Response({"detail": "session_token and image are required."}, status=400)
 
-        session = _get_session(request.user, session_token)
+        session = _get_handoff_session(session_token, for_write=True)
         if not session:
             return Response({"detail": "Invalid or expired session."}, status=404)
 
@@ -176,7 +205,7 @@ class VerificationSelfieView(APIView):
         image.seek(0)
 
         try:
-            selfie_url = upload_verification_selfie(image, user_id=request.user.id)
+            selfie_url = upload_verification_selfie(image, user_id=session.user_id)
         except CloudinaryNotConfiguredError as exc:
             return Response({"detail": str(exc)}, status=503)
         except ValueError as exc:
@@ -193,6 +222,74 @@ class VerificationSelfieView(APIView):
             else status.HTTP_202_ACCEPTED
         )
         return Response(_status_payload(session), status=http_status)
+
+
+class VerificationSessionView(APIView):
+    """Poll an active verification session (token-based handoff, no login required)."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        tags=["Verification"],
+        summary="Get verification session progress",
+        responses={200: VerificationStatusResponseSerializer},
+    )
+    def get(self, request):
+        session_token = request.query_params.get("session_token")
+        if not session_token:
+            return Response({"detail": "session_token is required."}, status=400)
+
+        session = _get_handoff_session(session_token, for_write=False)
+        if not session:
+            return Response({"detail": "Invalid or expired session."}, status=404)
+
+        return Response(_session_detail_payload(session))
+
+
+class VerificationHandoffEmailView(APIView):
+    """Email a verification handoff link to the authenticated user."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Verification"],
+        summary="Email verification handoff link",
+    )
+    def post(self, request):
+        session_token = request.data.get("session_token")
+        engine = VerificationEngine()
+
+        if session_token:
+            session = _get_session(request.user, session_token)
+            if not session:
+                return Response({"detail": "Invalid or expired session."}, status=404)
+        else:
+            session = engine.get_active_session(request.user) or engine.start_session(request.user)
+
+        handoff_url = build_handoff_url(session.session_token)
+        email = (request.user.email or "").strip()
+        if not email:
+            return Response({"detail": "No email on your account."}, status=400)
+
+        profile_name = ""
+        if hasattr(request.user, "profile"):
+            profile_name = (getattr(request.user.profile, "full_name", "") or "").strip()
+
+        send_verification_handoff_email(
+            to=email,
+            handoff_url=handoff_url,
+            user_name=profile_name,
+        )
+
+        return Response(
+            {
+                "sent": True,
+                "email": email,
+                "handoff_url": handoff_url,
+                "session_token": str(session.session_token),
+                "expires_at": session.expires_at,
+            }
+        )
 
 
 class VerificationVerifyView(APIView):
