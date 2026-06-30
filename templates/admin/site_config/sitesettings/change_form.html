@@ -7,19 +7,139 @@
     margin: 0 0 1rem;
     padding: 0.75rem 1rem;
     border-radius: 0.5rem;
-    background: rgba(13, 110, 253, 0.1);
-    border: 1px solid rgba(13, 110, 253, 0.2);
-    color: inherit;
+    background: rgba(13, 110, 253, 0.12);
+    border: 1px solid rgba(13, 110, 253, 0.25);
     font-size: 0.9rem;
   }
+
+  .duo-secret-field {
+    max-width: 42rem;
+  }
+
+  .duo-secret-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .duo-secret-input-row input[type="password"],
+  .duo-secret-input-row input[type="text"] {
+    flex: 1 1 16rem;
+    min-width: 0;
+  }
+
+  .duo-secret-status--saved {
+    margin: 0 0 0.35rem;
+    color: #198754;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .duo-secret-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+
+  .duo-secret-badge--saved {
+    background: rgba(25, 135, 84, 0.15);
+    color: #198754;
+    border: 1px solid rgba(25, 135, 84, 0.35);
+  }
+
+  .duo-secret-badge--empty {
+    background: rgba(255, 193, 7, 0.15);
+    color: #997404;
+    border: 1px solid rgba(255, 193, 7, 0.35);
+  }
 </style>
+<script>
+  (function () {
+    function wrapPasswordInput(input) {
+      if (!input || input.type !== "password") return;
+      if (input.closest("[data-duo-secret-field]")) return;
+
+      var row = document.createElement("div");
+      row.className = "duo-secret-input-row";
+      row.setAttribute("data-duo-secret-field", "");
+
+      var parent = input.parentNode;
+      parent.insertBefore(row, input);
+      row.appendChild(input);
+
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-sm btn-outline-secondary duo-secret-toggle";
+      button.setAttribute("data-target", input.id || input.name);
+      button.setAttribute("aria-label", "Show value");
+      button.innerHTML = '<i class="fas fa-eye" aria-hidden="true"></i> <span>Show</span>';
+      if (!input.id) {
+        input.id = "duo_secret_" + input.name;
+        button.setAttribute("data-target", input.id);
+      }
+      row.appendChild(button);
+    }
+
+    function toggleSecretField(button) {
+      var targetId = button.getAttribute("data-target");
+      var input = document.getElementById(targetId);
+      if (!input) return;
+
+      var show = input.type === "password";
+      input.type = show ? "text" : "password";
+
+      var icon = button.querySelector("i");
+      if (icon) {
+        icon.classList.toggle("fa-eye", !show);
+        icon.classList.toggle("fa-eye-slash", show);
+      }
+
+      var label = button.querySelector("span");
+      if (label) {
+        label.textContent = show ? "Hide" : "Show";
+      }
+
+      button.setAttribute("aria-label", show ? "Hide value" : "Show value");
+    }
+
+    function initSecretFields() {
+      var selectors = [
+        "input[name=google_client_secret]",
+        "input[name=email_host_password]",
+        "input[name=esewa_secret_key]",
+        "input[name=cloudinary_api_secret]",
+      ];
+      selectors.forEach(function (selector) {
+        document.querySelectorAll(selector).forEach(wrapPasswordInput);
+      });
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".duo-secret-toggle");
+      if (!button) return;
+      event.preventDefault();
+      toggleSecretField(button);
+    });
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initSecretFields);
+    } else {
+      initSecretFields();
+    }
+  })();
+</script>
 {% endblock %}
 
 {% block content %}
 <p class="duo-settings-note">
-  Password and secret fields are hidden after save. If you see
-  <strong>A value is saved</strong> under a field, it is stored — leave it blank to keep it,
-  or type a new value to replace it. Use <strong>Show</strong> while typing.
+  <strong>Secrets are never shown after save.</strong>
+  Look for the green <strong>Saved (hidden for security)</strong> badge above each secret field.
+  Use <strong>Show</strong> while typing a new value. Leave the field blank to keep the stored secret.
 </p>
 {{ block.super }}
 {% endblock %}

@@ -4,9 +4,7 @@ from django.utils.html import format_html
 
 
 class RevealablePasswordInput(forms.PasswordInput):
-    """Password field with show/hide toggle and a configured-state hint."""
-
-    template_name = "site_config/widgets/revealable_password.html"
+    """Password field with inline show/hide toggle (no external template dependency)."""
 
     def __init__(self, *args, configured: bool = False, **kwargs):
         self.configured = configured
@@ -18,26 +16,40 @@ class RevealablePasswordInput(forms.PasswordInput):
                 "Saved — leave blank to keep, or type a new value",
             )
 
-    def get_context(self, name, value, attrs):
-        context = super().get_context(name, value, attrs)
-        context["widget"]["configured"] = self.configured
-        return context
-
     def render(self, name, value, attrs=None, renderer=None):
-        # Fallback if template loading fails in tests.
-        if renderer is None:
-            renderer = self.renderer
-        try:
-            return super().render(name, value, attrs, renderer)
-        except Exception:
-            final_attrs = self.build_attrs(attrs, {"type": self.input_type, "name": name})
-            input_id = final_attrs.get("id", name)
-            return format_html(
-                '<div class="duo-secret-field"><input{} />'
-                '<button type="button" class="duo-secret-toggle" data-target="{}">Show</button></div>',
-                flatatt(final_attrs),
-                input_id,
+        final_attrs = self.build_attrs(
+            attrs,
+            {
+                "type": "password",
+                "name": name,
+                "autocomplete": "new-password",
+            },
+        )
+        input_id = final_attrs.get("id", f"id_{name}")
+        final_attrs["id"] = input_id
+
+        status = ""
+        if self.configured:
+            status = format_html(
+                '<p class="duo-secret-status duo-secret-status--saved">'
+                '<i class="fas fa-check-circle" aria-hidden="true"></i> '
+                "A value is saved. Leave blank to keep it unchanged."
+                "</p>"
             )
 
-    class Media:
-        js = ("site_config/js/revealable_password.js",)
+        return format_html(
+            '<div class="duo-secret-field" data-duo-secret-field>'
+            "{}"
+            '<div class="duo-secret-input-row">'
+            "<input{} />"
+            '<button type="button" class="btn btn-sm btn-outline-secondary duo-secret-toggle" '
+            'data-target="{}" aria-label="Show value">'
+            '<i class="fas fa-eye" aria-hidden="true"></i> '
+            "<span>Show</span>"
+            "</button>"
+            "</div>"
+            "</div>",
+            status,
+            flatatt(final_attrs),
+            input_id,
+        )

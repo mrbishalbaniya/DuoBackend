@@ -25,23 +25,27 @@ class SiteSettingsForm(forms.ModelForm):
             if not field:
                 continue
 
-            configured = bool(instance and instance.pk and getattr(instance, name, ""))
+            stored = ""
+            if instance and instance.pk:
+                stored = (getattr(instance, name, "") or "").strip()
+
+            configured = bool(stored)
             field.widget = RevealablePasswordInput(configured=configured)
             field.required = False
             field.help_text = (
-                "Leave blank when saving to keep the current value."
+                "A value is already saved (hidden). Leave blank to keep it, or type a new value to replace it."
                 if configured
-                else "Enter the secret value."
+                else "Enter the secret value, then click Save at the bottom of the page."
             )
 
     def save(self, commit=True):
         instance = super().save(commit=False)
-        instance.pk = instance.pk or SiteSettings.SINGLETON_PK
+        instance.pk = SiteSettings.SINGLETON_PK
 
         previous = SiteSettings.objects.filter(pk=SiteSettings.SINGLETON_PK).first()
         if previous:
             for name in SECRET_FIELDS:
-                new_value = self.cleaned_data.get(name)
+                new_value = (self.cleaned_data.get(name) or "").strip()
                 if not new_value:
                     setattr(instance, name, getattr(previous, name))
 
