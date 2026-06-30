@@ -8,15 +8,14 @@ class RevealablePasswordInput(forms.PasswordInput):
 
     def __init__(self, *args, configured: bool = False, **kwargs):
         self.configured = configured
-        kwargs.setdefault("render_value", False)
+        # Admin-only page: render stored secrets so Show/Hide can reveal them.
+        kwargs["render_value"] = True
         super().__init__(*args, **kwargs)
-        if configured:
-            self.attrs.setdefault(
-                "placeholder",
-                "Saved — leave blank to keep, or type a new value",
-            )
 
     def render(self, name, value, attrs=None, renderer=None):
+        stored = (value or "").strip()
+        has_value = bool(stored)
+
         final_attrs = self.build_attrs(
             attrs,
             {
@@ -28,12 +27,20 @@ class RevealablePasswordInput(forms.PasswordInput):
         input_id = final_attrs.get("id", f"id_{name}")
         final_attrs["id"] = input_id
 
+        if has_value:
+            final_attrs["value"] = stored
+        elif self.configured:
+            final_attrs.setdefault(
+                "placeholder",
+                "Saved — leave blank to keep, or type a new value",
+            )
+
         status = ""
-        if self.configured:
+        if has_value or self.configured:
             status = format_html(
                 '<p class="duo-secret-status duo-secret-status--saved">'
                 '<i class="fas fa-check-circle" aria-hidden="true"></i> '
-                "A value is saved. Leave blank to keep it unchanged."
+                "Value saved. Click <strong>Show</strong> to view it."
                 "</p>"
             )
 

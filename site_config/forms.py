@@ -33,7 +33,7 @@ class SiteSettingsForm(forms.ModelForm):
             field.widget = RevealablePasswordInput(configured=configured)
             field.required = False
             field.help_text = (
-                "A value is already saved (hidden). Leave blank to keep it, or type a new value to replace it."
+                "Saved in database. Click Show to view, or type a new value to replace it."
                 if configured
                 else "Enter the secret value, then click Save at the bottom of the page."
             )
