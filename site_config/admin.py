@@ -1,8 +1,10 @@
 from django.contrib import admin, messages
 from django.http import HttpResponseRedirect
-from django.urls import reverse
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
 from django.utils.html import format_html
 
+from email_service.service import send_test_email
 from site_config.forms import SECRET_FIELDS, SiteSettingsForm
 from site_config.models import SiteSettings
 
@@ -11,7 +13,7 @@ def _secret_status_html(value: str) -> str:
     if (value or "").strip():
         return format_html(
             '<span class="duo-secret-badge duo-secret-badge--saved">'
-            '<i class="fas fa-lock" aria-hidden="true"></i> Saved (hidden for security)</span>'
+            '<i class="fas fa-lock" aria-hidden="true"></i> Saved (encrypted)</span>'
         )
     return format_html(
         '<span class="duo-secret-badge duo-secret-badge--empty">'
@@ -54,22 +56,45 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "email_delivery",
+                    "email_from_name",
                     "default_from_email",
                     "brevo_api_key_status",
                     "brevo_api_key",
                     "resend_api_key_status",
                     "resend_api_key",
+                    "test_email_recipient",
+                ),
+                "description": (
+                    "Brevo SMTP is the default provider (smtp-relay.brevo.com:587, TLS). "
+                    "On Render free tier, SMTP ports may be blocked — keep a Brevo API key "
+                    "configured for automatic HTTPS fallback."
+                ),
+            },
+        ),
+        (
+            "Brevo SMTP",
+            {
+                "fields": (
                     "email_host",
                     "email_port",
                     "email_use_tls",
+                    "email_use_ssl",
                     "email_host_user",
                     "email_host_password_status",
                     "email_host_password",
                 ),
-                "description": (
-                    "Render free tier blocks Gmail SMTP. Use Brevo (verify your Gmail as sender) "
-                    "or Resend (verify a domain). SMTP only works locally or on paid Render."
+            },
+        ),
+        (
+            "Email branding",
+            {
+                "fields": (
+                    "email_brand_logo_url",
+                    "email_brand_primary_color",
+                    "email_footer_text",
+                    "email_social_links",
                 ),
+                "description": "Used by HTML templates in Email service → Email templates.",
             },
         ),
         (
@@ -105,6 +130,33 @@ class SiteSettingsAdmin(admin.ModelAdmin):
         ),
         ("Meta", {"fields": ("updated_at",)}),
     )
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "send-test-email/",
+                self.admin_site.admin_view(self.send_test_email_view),
+                name="site_config_sitesettings_send_test_email",
+            ),
+        ]
+        return custom + urls
+
+    def send_test_email_view(self, request):
+        if request.method != "POST":
+            return HttpResponseRedirect(reverse("admin:site_config_sitesettings_change", args=[1]))
+
+        recipient = (request.POST.get("test_email_recipient") or "").strip()
+        if not recipient:
+            messages.error(request, "Enter a test email recipient address first.")
+        else:
+            ok, detail = send_test_email(recipient)
+            if ok:
+                messages.success(request, detail)
+            else:
+                messages.error(request, f"Test email failed: {detail}")
+
+        return HttpResponseRedirect(reverse("admin:site_config_sitesettings_change", args=[1]))
 
     @admin.display(description="Google client secret")
     def google_client_secret_status(self, obj):
@@ -144,6 +196,7 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     def change_view(self, request, object_id, form_url="", extra_context=None):
         extra_context = extra_context or {}
         extra_context["title"] = "Integration settings"
+        extra_context["test_email_url"] = reverse("admin:site_config_sitesettings_send_test_email")
         return super().change_view(request, object_id, form_url, extra_context=extra_context)
 
     def save_model(self, request, obj, form, change):
@@ -165,5 +218,4 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             )
 
     def response_change(self, request, obj):
-        # save_model already shows the success message.
         return HttpResponseRedirect(request.path)

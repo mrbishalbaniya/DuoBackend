@@ -32,18 +32,16 @@ class SiteSettings(models.Model):
     EMAIL_DELIVERY_RESEND = "resend"
     EMAIL_DELIVERY_BREVO = "brevo"
     EMAIL_DELIVERY_CHOICES = [
-        (EMAIL_DELIVERY_BREVO, "Brevo API (recommended on Render free — works with Gmail sender)"),
-        (EMAIL_DELIVERY_RESEND, "Resend API (requires verified domain)"),
-        (EMAIL_DELIVERY_SMTP, "SMTP (local dev / paid Render only)"),
+        (EMAIL_DELIVERY_SMTP, "Brevo SMTP (recommended — smtp-relay.brevo.com:587)"),
+        (EMAIL_DELIVERY_BREVO, "Brevo API (HTTPS fallback when SMTP is blocked)"),
+        (EMAIL_DELIVERY_RESEND, "Resend API"),
     ]
 
     email_delivery = models.CharField(
         max_length=16,
         choices=EMAIL_DELIVERY_CHOICES,
-        default=EMAIL_DELIVERY_BREVO,
-        help_text=(
-            "Render free tier blocks SMTP ports 587/465. Use Brevo or Resend on production."
-        ),
+        default=EMAIL_DELIVERY_SMTP,
+        help_text="Primary email provider. SMTP uses Brevo relay; API is used as automatic fallback.",
     )
     resend_api_key = models.CharField(
         max_length=255,
@@ -56,20 +54,64 @@ class SiteSettings(models.Model):
         help_text="Brevo API key (xkeysib-...). Leave blank when saving to keep the current value.",
     )
 
-    # SMTP
-    email_host = models.CharField(max_length=255, blank=True, default="smtp.gmail.com")
+    # SMTP (Brevo relay by default)
+    email_host = models.CharField(
+        max_length=255,
+        blank=True,
+        default="smtp-relay.brevo.com",
+        help_text="SMTP relay host (Brevo: smtp-relay.brevo.com).",
+    )
     email_port = models.PositiveIntegerField(default=587, blank=True, null=True)
     email_use_tls = models.BooleanField(default=True, blank=True, null=True)
-    email_host_user = models.CharField(max_length=255, blank=True)
+    email_use_ssl = models.BooleanField(
+        default=False,
+        blank=True,
+        null=True,
+        help_text="Use SSL on connect (port 465). Leave off for STARTTLS on port 587.",
+    )
+    email_host_user = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text=(
+            "Copy the exact SMTP login from Brevo → SMTP & API → SMTP tab "
+            "(may be your email or something@smtp-brevo.com — do not guess)."
+        ),
+    )
     email_host_password = models.CharField(
         max_length=255,
         blank=True,
-        help_text="SMTP password or app password. Leave blank when saving to keep the current value.",
+        help_text="Brevo SMTP key. Leave blank when saving to keep the current value.",
+    )
+    email_from_name = models.CharField(
+        max_length=128,
+        blank=True,
+        default="SajiloWork",
+        help_text="Default sender display name.",
     )
     default_from_email = models.CharField(
         max_length=255,
         blank=True,
-        help_text='Sender address, e.g. "Duo <noreply@yourdomain.com>".',
+        help_text='Verified sender, e.g. "SajiloWork <noreply@yourdomain.com>".',
+    )
+    email_brand_logo_url = models.URLField(
+        max_length=500,
+        blank=True,
+        help_text="Logo URL for HTML email templates.",
+    )
+    email_brand_primary_color = models.CharField(
+        max_length=16,
+        blank=True,
+        default="#6366f1",
+        help_text="Brand accent color for email templates (hex).",
+    )
+    email_footer_text = models.CharField(
+        max_length=500,
+        blank=True,
+        default="© SajiloWork. All rights reserved.",
+    )
+    email_social_links = models.TextField(
+        blank=True,
+        help_text="Optional footer links (one per line: Label|https://url).",
     )
 
     # eSewa

@@ -139,9 +139,24 @@
 
 {% block content %}
 <p class="duo-settings-note">
-  <strong>Secrets are stored in the database.</strong>
-  Saved values appear as dots in each field — click <strong>Show</strong> to read them.
+  <strong>Secrets are encrypted in the database.</strong>
+  Saved values appear as dots — click <strong>Show</strong> to read them.
   Leave a field blank when saving to keep the current value.
 </p>
+{% if test_email_url %}
+<form method="post" action="{{ test_email_url }}" style="margin:0 0 1rem;padding:1rem;border:1px solid #dee2e6;border-radius:0.5rem;background:#f8f9fa;">
+  {% csrf_token %}
+  <p style="margin:0 0 0.5rem;font-weight:600;">Send test email</p>
+  <p style="margin:0 0 0.75rem;font-size:0.9rem;color:#6c757d;">
+    Save SMTP settings first, then send a test message to verify delivery.
+  </p>
+  <div class="form-row">
+    <label for="id_test_email_recipient_inline">Recipient</label>
+    <input type="email" name="test_email_recipient" id="id_test_email_recipient_inline"
+           class="vTextField" placeholder="you@example.com" style="max-width:24rem;" />
+    <button type="submit" class="btn btn-primary btn-sm" style="margin-left:0.5rem;">Send test email</button>
+  </div>
+</form>
+{% endif %}
 {{ block.super }}
 {% endblock %}

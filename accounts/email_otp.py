@@ -3,7 +3,8 @@ import string
 
 from django.core.cache import cache
 
-from duo_project.email_utils import send_configured_mail
+from email_service.constants import EmailEvent
+from email_service.service import send_email
 
 OTP_TTL_SECONDS = 600
 OTP_LENGTH = 6
@@ -26,14 +27,14 @@ def send_email_otp(email: str) -> None:
     code = generate_otp()
     cache.set(_cache_key(normalized), code, OTP_TTL_SECONDS)
 
-    send_configured_mail(
-        subject="Your Duo verification code",
-        message=(
-            f"Your Duo verification code is: {code}\n\n"
-            "Enter this code in the app to continue registration. "
-            "The code expires in 10 minutes."
-        ),
-        recipient_list=[normalized],
+    send_email(
+        event=EmailEvent.REGISTRATION_OTP,
+        to=normalized,
+        context={
+            "otp_code": code,
+            "expiry_minutes": OTP_TTL_SECONDS // 60,
+        },
+        fail_silently=False,
     )
 
 

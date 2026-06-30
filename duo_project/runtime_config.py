@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from django.conf import settings
 from django.core.cache import cache
 
+from duo_project.secret_fields import decrypt_secret
+
 CACHE_KEY = "site_config:integration:v1"
 CACHE_TTL_SECONDS = 300
 
@@ -20,12 +22,18 @@ class IntegrationSettings:
     email_host: str
     email_port: int
     email_use_tls: bool
+    email_use_ssl: bool
     email_host_user: str
     email_host_password: str
     email_delivery: str
     resend_api_key: str
     brevo_api_key: str
     default_from_email: str
+    email_from_name: str
+    email_brand_logo_url: str
+    email_brand_primary_color: str
+    email_footer_text: str
+    email_social_links: str
     esewa_product_code: str
     esewa_secret_key: str
     esewa_form_url: str
@@ -91,7 +99,7 @@ def get_integration_settings() -> IntegrationSettings:
     email_user = _pick_str(db("email_host_user"), settings.EMAIL_HOST_USER)
     default_from = _pick_str(db("default_from_email"), settings.DEFAULT_FROM_EMAIL)
     if not default_from and email_user:
-        default_from = f"Duo <{email_user}>"
+        default_from = f"SajiloWork <{email_user}>"
 
     uris_raw = _pick_str(db("google_allowed_redirect_uris"), "")
     if uris_raw:
@@ -127,28 +135,53 @@ def get_integration_settings() -> IntegrationSettings:
         ),
         google_redirect_uri=redirect_uri,
         google_allowed_redirect_uris=allowed,
-        email_host=_pick_str(db("email_host"), settings.EMAIL_HOST, "smtp.gmail.com"),
+        email_host=_pick_str(db("email_host"), settings.EMAIL_HOST, "smtp-relay.brevo.com"),
         email_port=_pick_int(db("email_port"), settings.EMAIL_PORT, 587),
         email_use_tls=_pick_bool(db("email_use_tls"), settings.EMAIL_USE_TLS, True),
+        email_use_ssl=_pick_bool(
+            db("email_use_ssl"),
+            getattr(settings, "EMAIL_USE_SSL", False),
+            False,
+        ),
         email_host_user=email_user,
-        email_host_password=_pick_str(
-            db("email_host_password"),
-            settings.EMAIL_HOST_PASSWORD,
+        email_host_password=decrypt_secret(
+            _pick_str(db("email_host_password"), settings.EMAIL_HOST_PASSWORD)
         ).replace(" ", ""),
         email_delivery=_pick_str(
             db("email_delivery"),
-            getattr(settings, "EMAIL_DELIVERY", "brevo"),
-            "brevo",
+            getattr(settings, "EMAIL_DELIVERY", "smtp"),
+            "smtp",
         ),
-        resend_api_key=_pick_str(
-            db("resend_api_key"),
-            getattr(settings, "RESEND_API_KEY", ""),
+        resend_api_key=decrypt_secret(
+            _pick_str(db("resend_api_key"), getattr(settings, "RESEND_API_KEY", ""))
         ),
-        brevo_api_key=_pick_str(
-            db("brevo_api_key"),
-            getattr(settings, "BREVO_API_KEY", ""),
+        brevo_api_key=decrypt_secret(
+            _pick_str(db("brevo_api_key"), getattr(settings, "BREVO_API_KEY", ""))
         ),
         default_from_email=default_from,
+        email_from_name=_pick_str(
+            db("email_from_name"),
+            getattr(settings, "EMAIL_FROM_NAME", "SajiloWork"),
+            "SajiloWork",
+        ),
+        email_brand_logo_url=_pick_str(
+            db("email_brand_logo_url"),
+            getattr(settings, "EMAIL_BRAND_LOGO_URL", ""),
+        ),
+        email_brand_primary_color=_pick_str(
+            db("email_brand_primary_color"),
+            getattr(settings, "EMAIL_BRAND_PRIMARY_COLOR", "#6366f1"),
+            "#6366f1",
+        ),
+        email_footer_text=_pick_str(
+            db("email_footer_text"),
+            getattr(settings, "EMAIL_FOOTER_TEXT", "© SajiloWork. All rights reserved."),
+            "© SajiloWork. All rights reserved.",
+        ),
+        email_social_links=_pick_str(
+            db("email_social_links"),
+            getattr(settings, "EMAIL_SOCIAL_LINKS", ""),
+        ),
         esewa_product_code=_pick_str(db("esewa_product_code"), settings.ESEWA_PRODUCT_CODE),
         esewa_secret_key=_pick_str(db("esewa_secret_key"), settings.ESEWA_SECRET_KEY),
         esewa_form_url=_pick_str(

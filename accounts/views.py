@@ -196,25 +196,16 @@ class EmailOtpSendView(APIView):
             send_email_otp(email)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except RuntimeError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except TimeoutError:
             return Response(
-                {"detail": "Email server timed out. Check email settings in the admin."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        except OSError:
-            return Response(
-                {
-                    "detail": (
-                        "Could not reach the SMTP server. Render free tier blocks SMTP — "
-                        "switch Email delivery to Resend in Admin → Integration settings."
-                    )
-                },
+                {"detail": "Email server timed out. Check Integration settings in the admin."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except Exception:
             return Response(
-                {"detail": "Could not send verification email. Check Gmail SMTP settings.",
-                },
+                {"detail": "Could not send verification email. Check email settings in the admin."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -269,9 +260,11 @@ class PasswordForgotView(APIView):
                 send_password_reset_otp(email)
             except ValueError as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            except RuntimeError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
             except Exception:
                 return Response(
-                    {"detail": "Could not send password reset email. Check Gmail SMTP settings."},
+                    {"detail": "Could not send password reset email. Check email settings in the admin."},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 

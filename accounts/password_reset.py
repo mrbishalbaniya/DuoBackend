@@ -1,6 +1,7 @@
 from django.core.cache import cache
 
-from duo_project.email_utils import send_configured_mail
+from email_service.constants import EmailEvent
+from email_service.service import send_email
 
 from .email_otp import OTP_TTL_SECONDS, generate_otp, normalize_email
 
@@ -16,15 +17,14 @@ def send_password_reset_otp(email: str) -> None:
     code = generate_otp()
     cache.set(_cache_key(normalized), code, OTP_TTL_SECONDS)
 
-    send_configured_mail(
-        subject="Reset your Duo password",
-        message=(
-            f"Your Duo password reset code is: {code}\n\n"
-            "Enter this code in the app to set a new password. "
-            "The code expires in 10 minutes.\n\n"
-            "If you did not request this, you can ignore this email."
-        ),
-        recipient_list=[normalized],
+    send_email(
+        event=EmailEvent.PASSWORD_RESET_OTP,
+        to=normalized,
+        context={
+            "otp_code": code,
+            "expiry_minutes": OTP_TTL_SECONDS // 60,
+        },
+        fail_silently=False,
     )
 
 

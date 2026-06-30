@@ -74,6 +74,10 @@ services:
         sync: false
       - key: EMAIL_DELIVERY
         sync: false
+      - key: EMAIL_FROM_NAME
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
       - key: BREVO_API_KEY
         sync: false
       - key: RESEND_API_KEY

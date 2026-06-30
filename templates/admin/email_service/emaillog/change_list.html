@@ -1,0 +1,33 @@
+{% extends "admin/change_list.html" %}
+
+{% block content_title %}
+  <h1>Email analytics</h1>
+  {% if email_stats %}
+  <div style="display:flex;flex-wrap:wrap;gap:0.75rem;margin:1rem 0;">
+    <div style="padding:0.75rem 1rem;background:#e8f5e9;border-radius:8px;min-width:120px;">
+      <div style="font-size:1.5rem;font-weight:700;">{{ email_stats.sent }}</div>
+      <div style="font-size:0.85rem;color:#555;">Sent</div>
+    </div>
+    <div style="padding:0.75rem 1rem;background:#e3f2fd;border-radius:8px;min-width:120px;">
+      <div style="font-size:1.5rem;font-weight:700;">{{ email_stats.delivered }}</div>
+      <div style="font-size:0.85rem;color:#555;">Delivered</div>
+    </div>
+    <div style="padding:0.75rem 1rem;background:#ffebee;border-radius:8px;min-width:120px;">
+      <div style="font-size:1.5rem;font-weight:700;">{{ email_stats.failed }}</div>
+      <div style="font-size:0.85rem;color:#555;">Failed</div>
+    </div>
+    <div style="padding:0.75rem 1rem;background:#fff8e1;border-radius:8px;min-width:120px;">
+      <div style="font-size:1.5rem;font-weight:700;">{{ email_stats.queued }}</div>
+      <div style="font-size:0.85rem;color:#555;">Queued</div>
+    </div>
+    <div style="padding:0.75rem 1rem;background:#f3e5f5;border-radius:8px;min-width:120px;">
+      <div style="font-size:1.5rem;font-weight:700;">{{ email_stats.retried }}</div>
+      <div style="font-size:0.85rem;color:#555;">Retried</div>
+    </div>
+    <div style="padding:0.75rem 1rem;background:#eceff1;border-radius:8px;min-width:120px;">
+      <div style="font-size:1.5rem;font-weight:700;">{{ email_stats.total }}</div>
+      <div style="font-size:0.85rem;color:#555;">Total logged</div>
+    </div>
+  </div>
+  {% endif %}
+{% endblock %}
