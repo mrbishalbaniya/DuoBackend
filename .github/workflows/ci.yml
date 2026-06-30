@@ -1,17 +1,22 @@
-name: CI
+name: Backend CI/CD
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: backend-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   test:
+    name: CI
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -48,3 +53,22 @@ jobs:
           SECRET_KEY: ci-test-secret-key
           DEBUG: "True"
         run: python manage.py test --verbosity=2
+
+  deploy:
+    name: Deploy (Render)
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Trigger Render deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::warning::RENDER_DEPLOY_HOOK_URL secret is not set."
+            echo "Render may still auto-deploy if the repo is connected in the Render dashboard."
+            exit 0
+          fi
+          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"

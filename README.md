@@ -1,5 +1,7 @@
 # DuoBackend
 
+[![Backend CI/CD](https://github.com/mrbishalbaniya/DuoBackend/actions/workflows/ci.yml/badge.svg)](https://github.com/mrbishalbaniya/DuoBackend/actions/workflows/ci.yml)
+
 Django REST API and WebSocket backend for **Duo** — accounts, matching, and real-time chat.
 
 ## Project layout
@@ -56,8 +58,7 @@ GitHub Actions runs on every push and pull request to `main`:
 
 | Workflow | File | What it does |
 |----------|------|--------------|
-| **CI** | `.github/workflows/ci.yml` | Install deps, `manage.py check`, migrate, run tests |
-| **Deploy** | `.github/workflows/deploy.yml` | Trigger Render deploy hook on push to `main` |
+| **CI/CD** | `.github/workflows/ci.yml` | CI tests + optional Render deploy hook on push to `main` |
 
 ### Deploy backend (Render)
 
