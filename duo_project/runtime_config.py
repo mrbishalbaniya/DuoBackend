@@ -22,6 +22,8 @@ class IntegrationSettings:
     email_use_tls: bool
     email_host_user: str
     email_host_password: str
+    email_delivery: str
+    resend_api_key: str
     default_from_email: str
     esewa_product_code: str
     esewa_secret_key: str
@@ -120,6 +122,15 @@ def get_integration_settings() -> IntegrationSettings:
             db("email_host_password"),
             settings.EMAIL_HOST_PASSWORD,
         ).replace(" ", ""),
+        email_delivery=_pick_str(
+            db("email_delivery"),
+            getattr(settings, "EMAIL_DELIVERY", "resend"),
+            "resend",
+        ),
+        resend_api_key=_pick_str(
+            db("resend_api_key"),
+            getattr(settings, "RESEND_API_KEY", ""),
+        ),
         default_from_email=default_from,
         esewa_product_code=_pick_str(db("esewa_product_code"), settings.ESEWA_PRODUCT_CODE),
         esewa_secret_key=_pick_str(db("esewa_secret_key"), settings.ESEWA_SECRET_KEY),

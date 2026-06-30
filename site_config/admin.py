@@ -25,6 +25,7 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     readonly_fields = (
         "updated_at",
         "google_client_secret_status",
+        "resend_api_key_status",
         "email_host_password_status",
         "esewa_secret_key_status",
         "cloudinary_api_secret_status",
@@ -48,18 +49,24 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Email (SMTP)",
+            "Email delivery",
             {
                 "fields": (
+                    "email_delivery",
+                    "default_from_email",
+                    "resend_api_key_status",
+                    "resend_api_key",
                     "email_host",
                     "email_port",
                     "email_use_tls",
                     "email_host_user",
                     "email_host_password_status",
                     "email_host_password",
-                    "default_from_email",
                 ),
-                "description": "Used for registration OTP and password reset emails.",
+                "description": (
+                    "Render free tier blocks Gmail SMTP (ports 587/465). "
+                    "Use Resend API on production. SMTP works locally or on paid Render."
+                ),
             },
         ),
         (
@@ -99,6 +106,10 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     @admin.display(description="Google client secret")
     def google_client_secret_status(self, obj):
         return _secret_status_html(obj.google_client_secret)
+
+    @admin.display(description="Resend API key")
+    def resend_api_key_status(self, obj):
+        return _secret_status_html(obj.resend_api_key)
 
     @admin.display(description="SMTP password")
     def email_host_password_status(self, obj):

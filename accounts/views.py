@@ -205,12 +205,17 @@ class EmailOtpSendView(APIView):
             return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except TimeoutError:
             return Response(
-                {"detail": "Email server timed out. Check SMTP settings on the backend."},
+                {"detail": "Email server timed out. Check email settings in the admin."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except OSError:
             return Response(
-                {"detail": "Could not reach the email server. Check SMTP host, port, and credentials."},
+                {
+                    "detail": (
+                        "Could not reach the SMTP server. Render free tier blocks SMTP — "
+                        "switch Email delivery to Resend in Admin → Integration settings."
+                    )
+                },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except Exception:

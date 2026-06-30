@@ -6,6 +6,7 @@ from site_config.widgets import RevealablePasswordInput
 SECRET_FIELDS = (
     "google_client_secret",
     "email_host_password",
+    "resend_api_key",
     "esewa_secret_key",
     "cloudinary_api_secret",
 )

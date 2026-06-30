@@ -286,6 +286,8 @@ EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
 EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="").strip()
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="").replace(" ", "")
+EMAIL_DELIVERY = config("EMAIL_DELIVERY", default="resend")
+RESEND_API_KEY = config("RESEND_API_KEY", default="").strip()
 DEFAULT_FROM_EMAIL = config(
     "DEFAULT_FROM_EMAIL",
     default=f"Duo <{EMAIL_HOST_USER}>" if EMAIL_HOST_USER else "noreply@duo.app",

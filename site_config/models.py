@@ -27,6 +27,29 @@ class SiteSettings(models.Model):
         help_text="Comma-separated redirect URIs allowed for token exchange (include web and mobile callbacks).",
     )
 
+    # Email delivery
+    EMAIL_DELIVERY_SMTP = "smtp"
+    EMAIL_DELIVERY_RESEND = "resend"
+    EMAIL_DELIVERY_CHOICES = [
+        (EMAIL_DELIVERY_SMTP, "SMTP (local dev / paid Render)"),
+        (EMAIL_DELIVERY_RESEND, "Resend API (required on Render free tier)"),
+    ]
+
+    email_delivery = models.CharField(
+        max_length=16,
+        choices=EMAIL_DELIVERY_CHOICES,
+        default=EMAIL_DELIVERY_RESEND,
+        help_text=(
+            "Render free tier blocks SMTP ports 587/465. Use Resend on production "
+            "or upgrade Render to a paid plan for Gmail SMTP."
+        ),
+    )
+    resend_api_key = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Resend API key (re_...). Leave blank when saving to keep the current value.",
+    )
+
     # SMTP
     email_host = models.CharField(max_length=255, blank=True, default="smtp.gmail.com")
     email_port = models.PositiveIntegerField(default=587, blank=True, null=True)
