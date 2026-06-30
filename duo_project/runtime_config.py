@@ -108,6 +108,18 @@ def get_integration_settings() -> IntegrationSettings:
     if not allowed and redirect_uri:
         allowed = (redirect_uri.rstrip("/"),)
 
+    # Always trust the configured frontend + backend OAuth callbacks.
+    auto_allowed: list[str] = []
+    frontend_url = getattr(settings, "FRONTEND_URL", "").strip().rstrip("/")
+    if frontend_url:
+        auto_allowed.append(f"{frontend_url}/api/auth/google/callback")
+    if redirect_uri:
+        auto_allowed.append(redirect_uri.rstrip("/"))
+    allowed_set = {uri.rstrip("/") for uri in allowed if uri}
+    for uri in auto_allowed:
+        allowed_set.add(uri.rstrip("/"))
+    allowed = tuple(sorted(allowed_set))
+
     cfg = IntegrationSettings(
         google_client_id=_pick_str(db("google_client_id"), settings.GOOGLE_OAUTH_CLIENT_ID),
         google_client_secret=_pick_str(

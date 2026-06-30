@@ -110,13 +110,6 @@ class GoogleAuthView(APIView):
             user, _created = get_or_create_google_user(idinfo)
         except (ValueError, GoogleAuthError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as exc:
-            detail = (
-                str(exc)
-                if settings.DEBUG
-                else "Google sign-in could not be verified. Check OAuth client settings."
-            )
-            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
         refresh = RefreshToken.for_user(user)
         response = Response(
