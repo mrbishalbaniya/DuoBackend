@@ -203,9 +203,20 @@ class EmailOtpSendView(APIView):
             send_email_otp(email)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except TimeoutError:
+            return Response(
+                {"detail": "Email server timed out. Check SMTP settings on the backend."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except OSError:
+            return Response(
+                {"detail": "Could not reach the email server. Check SMTP host, port, and credentials."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except Exception:
             return Response(
-                {"detail": "Could not send verification email. Check Gmail SMTP settings."},
+                {"detail": "Could not send verification email. Check Gmail SMTP settings.",
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

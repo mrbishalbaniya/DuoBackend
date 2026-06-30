@@ -26,6 +26,7 @@ def send_configured_mail(
         username=host_user,
         password=host_password,
         use_tls=cfg.email_use_tls,
+        timeout=15,
     )
 
     send_mail(
