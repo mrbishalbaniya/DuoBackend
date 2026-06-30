@@ -26,6 +26,7 @@ class SiteSettingsAdmin(admin.ModelAdmin):
         "updated_at",
         "google_client_secret_status",
         "resend_api_key_status",
+        "brevo_api_key_status",
         "email_host_password_status",
         "esewa_secret_key_status",
         "cloudinary_api_secret_status",
@@ -54,6 +55,8 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                 "fields": (
                     "email_delivery",
                     "default_from_email",
+                    "brevo_api_key_status",
+                    "brevo_api_key",
                     "resend_api_key_status",
                     "resend_api_key",
                     "email_host",
@@ -64,8 +67,8 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                     "email_host_password",
                 ),
                 "description": (
-                    "Render free tier blocks Gmail SMTP (ports 587/465). "
-                    "Use Resend API on production. SMTP works locally or on paid Render."
+                    "Render free tier blocks Gmail SMTP. Use Brevo (verify your Gmail as sender) "
+                    "or Resend (verify a domain). SMTP only works locally or on paid Render."
                 ),
             },
         ),
@@ -110,6 +113,10 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     @admin.display(description="Resend API key")
     def resend_api_key_status(self, obj):
         return _secret_status_html(obj.resend_api_key)
+
+    @admin.display(description="Brevo API key")
+    def brevo_api_key_status(self, obj):
+        return _secret_status_html(obj.brevo_api_key)
 
     @admin.display(description="SMTP password")
     def email_host_password_status(self, obj):

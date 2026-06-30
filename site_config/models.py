@@ -30,24 +30,30 @@ class SiteSettings(models.Model):
     # Email delivery
     EMAIL_DELIVERY_SMTP = "smtp"
     EMAIL_DELIVERY_RESEND = "resend"
+    EMAIL_DELIVERY_BREVO = "brevo"
     EMAIL_DELIVERY_CHOICES = [
-        (EMAIL_DELIVERY_SMTP, "SMTP (local dev / paid Render)"),
-        (EMAIL_DELIVERY_RESEND, "Resend API (required on Render free tier)"),
+        (EMAIL_DELIVERY_BREVO, "Brevo API (recommended on Render free — works with Gmail sender)"),
+        (EMAIL_DELIVERY_RESEND, "Resend API (requires verified domain)"),
+        (EMAIL_DELIVERY_SMTP, "SMTP (local dev / paid Render only)"),
     ]
 
     email_delivery = models.CharField(
         max_length=16,
         choices=EMAIL_DELIVERY_CHOICES,
-        default=EMAIL_DELIVERY_RESEND,
+        default=EMAIL_DELIVERY_BREVO,
         help_text=(
-            "Render free tier blocks SMTP ports 587/465. Use Resend on production "
-            "or upgrade Render to a paid plan for Gmail SMTP."
+            "Render free tier blocks SMTP ports 587/465. Use Brevo or Resend on production."
         ),
     )
     resend_api_key = models.CharField(
         max_length=255,
         blank=True,
         help_text="Resend API key (re_...). Leave blank when saving to keep the current value.",
+    )
+    brevo_api_key = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Brevo API key (xkeysib-...). Leave blank when saving to keep the current value.",
     )
 
     # SMTP

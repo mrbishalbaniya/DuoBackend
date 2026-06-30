@@ -74,6 +74,8 @@ services:
         sync: false
       - key: EMAIL_DELIVERY
         sync: false
+      - key: BREVO_API_KEY
+        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: DJANGO_SUPERUSER_USERNAME

@@ -7,6 +7,7 @@ SECRET_FIELDS = (
     "google_client_secret",
     "email_host_password",
     "resend_api_key",
+    "brevo_api_key",
     "esewa_secret_key",
     "cloudinary_api_secret",
 )

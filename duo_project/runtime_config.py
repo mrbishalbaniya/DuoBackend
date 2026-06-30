@@ -24,6 +24,7 @@ class IntegrationSettings:
     email_host_password: str
     email_delivery: str
     resend_api_key: str
+    brevo_api_key: str
     default_from_email: str
     esewa_product_code: str
     esewa_secret_key: str
@@ -124,12 +125,16 @@ def get_integration_settings() -> IntegrationSettings:
         ).replace(" ", ""),
         email_delivery=_pick_str(
             db("email_delivery"),
-            getattr(settings, "EMAIL_DELIVERY", "resend"),
-            "resend",
+            getattr(settings, "EMAIL_DELIVERY", "brevo"),
+            "brevo",
         ),
         resend_api_key=_pick_str(
             db("resend_api_key"),
             getattr(settings, "RESEND_API_KEY", ""),
+        ),
+        brevo_api_key=_pick_str(
+            db("brevo_api_key"),
+            getattr(settings, "BREVO_API_KEY", ""),
         ),
         default_from_email=default_from,
         esewa_product_code=_pick_str(db("esewa_product_code"), settings.ESEWA_PRODUCT_CODE),
