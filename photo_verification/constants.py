@@ -68,8 +68,9 @@ SMILE_MOUTH_DELTA_MIN = 0.10
 SMILE_MOUTH_RATIO_MIN = 1.30
 SMILE_CORNER_LIFT_MIN = 0.012  # fraction of face width
 
-BLINK_EAR_RATIO_MAX = 0.70  # current EAR / baseline EAR
-BLINK_EAR_DELTA_MIN = 0.06
+BLINK_EAR_RATIO_MAX = 0.78  # current EAR / baseline EAR (eyes more closed)
+BLINK_EAR_DELTA_MIN = 0.04
+BLINK_EAR_STRONG_DROP = 0.065  # passes even if ratio is borderline
 
 HEAD_YAW_DELTA_MIN = 0.08
 

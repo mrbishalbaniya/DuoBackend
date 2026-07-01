@@ -10,6 +10,7 @@ import numpy as np
 from photo_verification.constants import (
     BLINK_EAR_DELTA_MIN,
     BLINK_EAR_RATIO_MAX,
+    BLINK_EAR_STRONG_DROP,
     HEAD_YAW_DELTA_MIN,
     LIVENESS_STEPS,
     SMILE_CORNER_LIFT_MIN,
@@ -290,9 +291,21 @@ def validate_liveness_step(step: str, rgb: np.ndarray, baseline: dict | None = N
 
         ratio = float(eye / (base_eye + 1e-6))
         drop = float(base_eye - eye)
-        score = min(1.0, max((1.0 - ratio) / (1.0 - BLINK_EAR_RATIO_MAX), drop / BLINK_EAR_DELTA_MIN))
-        passed = ratio <= BLINK_EAR_RATIO_MAX and drop >= BLINK_EAR_DELTA_MIN
-        detail = "Blink detected" if passed else "Close your eyes briefly, then open them before capturing."
+        score = min(
+            1.0,
+            max(
+                (1.0 - ratio) / (1.0 - BLINK_EAR_RATIO_MAX + 1e-6),
+                drop / BLINK_EAR_DELTA_MIN,
+            ),
+        )
+        passed = drop >= BLINK_EAR_STRONG_DROP or (
+            ratio <= BLINK_EAR_RATIO_MAX and drop >= BLINK_EAR_DELTA_MIN
+        )
+        detail = (
+            "Blink detected"
+            if passed
+            else "Close your eyes fully, then tap Capture while they are still closed."
+        )
         return LivenessStepResult(step=step, passed=passed, score=max(score, 0.0), detail=detail)
 
     if step == "head_left":

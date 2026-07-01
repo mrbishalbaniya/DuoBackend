@@ -23,7 +23,7 @@ from photo_verification.verification_serializers import (
 
 INSTRUCTIONS = [
     "Use good lighting and face the camera directly.",
-    "First capture saves a neutral pose — then perform each action and capture again.",
+    "Each liveness step needs two captures: neutral pose first, then the action.",
     "Complete each liveness step: smile, blink, turn head left, turn head right.",
     "Take a clear front-facing selfie at the end.",
     "Only one person should be visible.",
@@ -31,10 +31,14 @@ INSTRUCTIONS = [
 
 _BASELINE_HINTS = {
     "smile": "Neutral pose saved. Now give a natural smile and tap Capture again.",
-    "blink": "Neutral pose saved. Blink your eyes clearly once, then tap Capture.",
+    "blink": "Eyes-open pose saved. Close your eyes fully and tap Capture while they stay closed.",
     "head_left": "Neutral pose saved. Turn your head left and tap Capture.",
     "head_right": "Neutral pose saved. Turn your head right and tap Capture.",
 }
+
+
+def _baseline_key(step: str) -> str:
+    return f"_baseline_{step}"
 
 
 def _get_session(user, session_token) -> UserVerification | None:
@@ -152,7 +156,8 @@ class VerificationLivenessView(APIView):
 
         loaded = load_image_from_file(image)
         liveness_data = dict(session.liveness_data or {})
-        baseline = liveness_data.get("_baseline") or {}
+        baseline_key = _baseline_key(step)
+        baseline = liveness_data.get(baseline_key) or {}
 
         if not baseline:
             baseline = capture_baseline_metrics(loaded.rgb)
@@ -170,7 +175,7 @@ class VerificationLivenessView(APIView):
                     }
                 )
 
-            liveness_data["_baseline"] = baseline
+            liveness_data[baseline_key] = baseline
             session.liveness_data = liveness_data
             session.save(update_fields=["liveness_data", "updated_at"])
 
