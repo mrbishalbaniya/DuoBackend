@@ -63,5 +63,15 @@ FRAUD_REVIEW = 0.70
 # Liveness aggregate pass threshold (0–1)
 LIVENESS_PASS_THRESHOLD = 0.75
 
+# Per-step liveness validation (relative to neutral baseline frame)
+SMILE_MOUTH_DELTA_MIN = 0.10
+SMILE_MOUTH_RATIO_MIN = 1.30
+SMILE_CORNER_LIFT_MIN = 0.012  # fraction of face width
+
+BLINK_EAR_RATIO_MAX = 0.70  # current EAR / baseline EAR
+BLINK_EAR_DELTA_MIN = 0.06
+
+HEAD_YAW_DELTA_MIN = 0.08
+
 # Verification session TTL (minutes)
 VERIFICATION_SESSION_TTL_MINUTES = 30

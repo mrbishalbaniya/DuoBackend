@@ -23,10 +23,18 @@ from photo_verification.verification_serializers import (
 
 INSTRUCTIONS = [
     "Use good lighting and face the camera directly.",
+    "First capture saves a neutral pose — then perform each action and capture again.",
     "Complete each liveness step: smile, blink, turn head left, turn head right.",
     "Take a clear front-facing selfie at the end.",
     "Only one person should be visible.",
 ]
+
+_BASELINE_HINTS = {
+    "smile": "Neutral pose saved. Now give a natural smile and tap Capture again.",
+    "blink": "Neutral pose saved. Blink your eyes clearly once, then tap Capture.",
+    "head_left": "Neutral pose saved. Turn your head left and tap Capture.",
+    "head_right": "Neutral pose saved. Turn your head right and tap Capture.",
+}
 
 
 def _get_session(user, session_token) -> UserVerification | None:
@@ -143,13 +151,46 @@ class VerificationLivenessView(APIView):
             return Response({"detail": "Session is no longer active."}, status=400)
 
         loaded = load_image_from_file(image)
-        baseline = session.liveness_data.get("_baseline", {}) if session.liveness_data else {}
-        if step == "smile" and not baseline:
+        liveness_data = dict(session.liveness_data or {})
+        baseline = liveness_data.get("_baseline") or {}
+
+        if not baseline:
             baseline = capture_baseline_metrics(loaded.rgb)
-            session.liveness_data = {**(session.liveness_data or {}), "_baseline": baseline}
+            if not baseline:
+                return Response(
+                    {
+                        "step": step,
+                        "passed": False,
+                        "score": 0.0,
+                        "detail": "Face not detected. Look straight at the camera with good lighting.",
+                        "liveness_steps_completed": [
+                            s for s in LIVENESS_STEPS if liveness_data.get(s, {}).get("passed")
+                        ],
+                        "baseline_captured": False,
+                    }
+                )
+
+            liveness_data["_baseline"] = baseline
+            session.liveness_data = liveness_data
+            session.save(update_fields=["liveness_data", "updated_at"])
+
+            return Response(
+                {
+                    "step": step,
+                    "passed": False,
+                    "score": 0.0,
+                    "detail": _BASELINE_HINTS.get(
+                        step,
+                        "Neutral pose saved. Perform the action and capture again.",
+                    ),
+                    "liveness_steps_completed": [
+                        s for s in LIVENESS_STEPS if liveness_data.get(s, {}).get("passed")
+                    ],
+                    "baseline_captured": True,
+                }
+            )
 
         result = validate_liveness_step(step, loaded.rgb, baseline=baseline)
-        liveness_data = dict(session.liveness_data or {})
         liveness_data[step] = {
             "passed": result.passed,
             "score": round(result.score, 4),
@@ -166,6 +207,7 @@ class VerificationLivenessView(APIView):
                 "score": result.score,
                 "detail": result.detail,
                 "liveness_steps_completed": completed,
+                "baseline_captured": False,
             }
         )
 
