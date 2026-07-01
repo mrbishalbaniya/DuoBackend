@@ -168,10 +168,13 @@ _database_url = env("DATABASE_URL")
 if _database_url:
     import dj_database_url
 
+    _db_scheme = _database_url.split("://", 1)[0].lower()
+    _db_requires_ssl = not DEBUG and _db_scheme in {"postgres", "postgresql"}
+
     DATABASES["default"] = dj_database_url.parse(
         _database_url,
         conn_max_age=600,
-        ssl_require=not DEBUG,
+        ssl_require=_db_requires_ssl,
     )
 
 
