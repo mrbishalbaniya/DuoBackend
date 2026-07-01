@@ -28,10 +28,22 @@ cd d:\8sem\DuoBackend
 ## Run server
 
 ```powershell
-.\scripts\run-server.ps1
+cd d:\8sem\DuoBackend
+python manage.py runserver 8001
 ```
 
-Server: http://localhost:8001/api
+In a **new external terminal**, activate the venv once per session:
+
+```powershell
+.\activate.ps1
+python manage.py runserver 8001
+```
+
+Or use the helper script:
+
+```powershell
+.\runserver.ps1
+```
 
 ## Cloudinary (required for uploads)
 

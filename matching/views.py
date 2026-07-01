@@ -9,8 +9,14 @@ from rest_framework.generics import RetrieveAPIView
 from django.contrib.auth.models import User
 from django.db.models import Q
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
-from .models import Swipe, Match
-from .serializers import SwipeSerializer, MatchSerializer, LikedProfileSerializer, mask_profile_for_paywall
+from .models import Swipe, Match, ProfileVisit
+from .serializers import (
+    SwipeSerializer,
+    MatchSerializer,
+    LikedProfileSerializer,
+    VisitedProfileSerializer,
+    mask_profile_for_paywall,
+)
 from chat.models import Conversation
 from subscriptions.services import user_has_active_subscription
 
@@ -215,6 +221,49 @@ class LikesYouView(APIView):
                 'premium_required': not is_premium and len(results) > 0,
                 'count': len(results),
                 'results': results,
+            }
+        )
+
+
+class ProfileVisitorsView(APIView):
+    """Users who viewed the current user's profile (premium reveals full details)."""
+
+    @extend_schema(
+        tags=["Matching"],
+        summary="List users who viewed my profile",
+        responses={200: VisitedProfileSerializer(many=True)},
+    )
+    def get(self, request):
+        visits = (
+            ProfileVisit.objects.filter(viewed_user=request.user)
+            .exclude(viewer=request.user)
+            .select_related("viewer__profile")
+            .order_by("-last_visited_at")
+        )
+
+        is_premium = user_has_active_subscription(request.user)
+        serializer = VisitedProfileSerializer(
+            visits,
+            many=True,
+            context={"request": request, "locked": not is_premium},
+        )
+        results = serializer.data
+
+        if not is_premium:
+            for item, visit in zip(results, visits):
+                original = item.get("profile") or {}
+                item["locked"] = True
+                item["profile"] = mask_profile_for_paywall(
+                    original,
+                    visit_id=visit.id,
+                )
+
+        return Response(
+            {
+                "is_premium": is_premium,
+                "premium_required": not is_premium and len(results) > 0,
+                "count": len(results),
+                "results": results,
             }
         )
 

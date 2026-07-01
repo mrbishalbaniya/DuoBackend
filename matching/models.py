@@ -41,3 +41,24 @@ class Match(models.Model):
 
     def __str__(self):
         return f"Match: {self.user1.username} ❤ {self.user2.username} ({self.compatibility_score}%)"
+
+
+class ProfileVisit(models.Model):
+    """Someone viewed another user's profile (Discover detail, profile page, etc.)."""
+
+    viewer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="profile_visits_made")
+    viewed_user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="profile_visits_received"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_visited_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("viewer", "viewed_user")
+        ordering = ["-last_visited_at"]
+        indexes = [
+            models.Index(fields=["viewed_user", "-last_visited_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.viewer.username} viewed {self.viewed_user.username}"

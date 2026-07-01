@@ -44,6 +44,7 @@ from .password_reset import (
 from .models import Profile
 from .geo import profile_coordinates, haversine_km, CITY_COORDS
 from matching.models import Swipe
+from matching.profile_visits import record_profile_visit
 
 User = get_user_model()
 
@@ -508,3 +509,29 @@ class DiscoverView(APIView):
 class ProfileDetailView(generics.RetrieveAPIView):
     queryset = Profile.objects.all()
     serializer_class = ProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def retrieve(self, request, *args, **kwargs):
+        profile = self.get_object()
+        record_profile_visit(request.user, profile.user)
+        return super().retrieve(request, *args, **kwargs)
+
+
+class ProfileVisitRecordView(APIView):
+    """Record that the current user viewed another member's profile."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=["Profiles"],
+        summary="Record a profile view",
+        responses={204: OpenApiResponse(description="Recorded")},
+    )
+    def post(self, request, pk):
+        try:
+            profile = Profile.objects.select_related("user").get(pk=pk)
+        except Profile.DoesNotExist:
+            return Response({"detail": "Profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        record_profile_visit(request.user, profile.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)

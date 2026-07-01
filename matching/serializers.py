@@ -41,8 +41,9 @@ class LikedProfileSerializer(serializers.Serializer):
         return bool(self.context.get('locked', False))
 
 
-def mask_profile_for_paywall(profile_data: dict, *, swipe_id: int | None = None) -> dict:
-    preview_distance_km = ((swipe_id or 0) % 42) + 4
+def mask_profile_for_paywall(profile_data: dict, *, swipe_id: int | None = None, visit_id: int | None = None) -> dict:
+    seed = visit_id if visit_id is not None else swipe_id
+    preview_distance_km = ((seed or 0) % 42) + 4
     return {
         "full_name": profile_data.get("full_name") or "Duo member",
         "photo_url": profile_data.get("photo_url"),
@@ -52,3 +53,16 @@ def mask_profile_for_paywall(profile_data: dict, *, swipe_id: int | None = None)
         "preview_distance_km": preview_distance_km,
         "is_verified": False,
     }
+
+
+class VisitedProfileSerializer(serializers.Serializer):
+    visit_id = serializers.IntegerField(source="id")
+    profile = serializers.SerializerMethodField()
+    visited_at = serializers.DateTimeField(source="last_visited_at")
+    locked = serializers.SerializerMethodField()
+
+    def get_profile(self, obj):
+        return ProfileSerializer(obj.viewer.profile).data
+
+    def get_locked(self, obj):
+        return bool(self.context.get("locked", False))

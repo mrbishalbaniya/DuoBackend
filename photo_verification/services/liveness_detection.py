@@ -264,9 +264,9 @@ def validate_liveness_step(step: str, rgb: np.ndarray, baseline: dict | None = N
         lift = _corner_lift(metrics, baseline)
         score = min(1.0, max(delta / SMILE_MOUTH_DELTA_MIN, ratio / SMILE_MOUTH_RATIO_MIN, lift / SMILE_CORNER_LIFT_MIN))
 
-        passed = delta >= SMILE_MOUTH_DELTA_MIN and ratio >= SMILE_MOUTH_RATIO_MIN
-        if metrics.get("source") == "mediapipe":
-            passed = passed and lift >= SMILE_CORNER_LIFT_MIN
+        mouth_ok = delta >= SMILE_MOUTH_DELTA_MIN and ratio >= SMILE_MOUTH_RATIO_MIN
+        lift_ok = lift >= SMILE_CORNER_LIFT_MIN
+        passed = mouth_ok or lift_ok
 
         detail = "Smile detected" if passed else "Show a clear, natural smile — lips wider or teeth visible."
         return LivenessStepResult(step=step, passed=passed, score=score, detail=detail)
