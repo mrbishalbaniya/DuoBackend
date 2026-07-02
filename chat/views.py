@@ -10,6 +10,7 @@ from drf_spectacular.utils import OpenApiResponse, extend_schema
 from matching.models import Swipe
 
 from .models import Conversation, ConversationPreference, Message, UserBlock, UserReport
+from .realtime import broadcast_chat_message, broadcast_typing_status
 from .serializers import ConversationSerializer, MessageSerializer, SendMessageSerializer
 
 
@@ -100,6 +101,18 @@ class MessageListView(APIView):
             image_url=serializer.validated_data.get('image_url', ''),
         )
 
+        profile = getattr(request.user, "profile", None)
+        sender_name = (getattr(profile, "full_name", None) or "").strip() or request.user.username
+        broadcast_chat_message(
+            convo.id,
+            msg_id=msg.id,
+            content=msg.content,
+            image_url=msg.image_url,
+            sender_id=request.user.id,
+            sender_name=sender_name,
+            timestamp=msg.timestamp.isoformat(),
+        )
+
         return Response(
             MessageSerializer(msg, context={'request': request}).data,
             status=status.HTTP_201_CREATED
@@ -151,6 +164,7 @@ class TypingHeartbeatView(APIView):
             convo.user2_last_typed = timezone.now()
         
         convo.save(update_fields=['user1_last_typed', 'user2_last_typed'])
+        broadcast_typing_status(convo.id, user_id=request.user.id, is_typing=True)
         return Response({'status': 'ok'})
 
 class ImageUploadView(APIView):

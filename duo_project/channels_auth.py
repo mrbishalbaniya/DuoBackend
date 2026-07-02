@@ -12,7 +12,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 User = get_user_model()
 WS_TICKET_SALT = "duo-ws-ticket"
-WS_TICKET_MAX_AGE = 60
+WS_TICKET_MAX_AGE = 300
 
 
 @database_sync_to_async
