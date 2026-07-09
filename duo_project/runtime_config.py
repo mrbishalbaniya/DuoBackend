@@ -48,6 +48,14 @@ class IntegrationSettings:
     cloudinary_chat_folder: str
     cloudinary_verification_folder: str
     openweather_api_key: str
+    fcm_enabled: bool
+    firebase_project_id: str
+    firebase_api_key: str
+    firebase_auth_domain: str
+    firebase_messaging_sender_id: str
+    firebase_app_id: str
+    fcm_vapid_key: str
+    firebase_service_account_json: str
 
 
 def invalidate_integration_cache() -> None:
@@ -224,6 +232,26 @@ def get_integration_settings() -> IntegrationSettings:
         ),
         openweather_api_key=decrypt_secret(
             _pick_str(db("openweather_api_key"), getattr(settings, "OPENWEATHER_API_KEY", ""))
+        ),
+        fcm_enabled=_pick_bool(db("fcm_enabled"), getattr(settings, "FCM_ENABLED", False), False),
+        firebase_project_id=_pick_str(
+            db("firebase_project_id"), getattr(settings, "FIREBASE_PROJECT_ID", "")
+        ),
+        firebase_api_key=_pick_str(db("firebase_api_key"), getattr(settings, "FIREBASE_API_KEY", "")),
+        firebase_auth_domain=_pick_str(
+            db("firebase_auth_domain"), getattr(settings, "FIREBASE_AUTH_DOMAIN", "")
+        ),
+        firebase_messaging_sender_id=_pick_str(
+            db("firebase_messaging_sender_id"),
+            getattr(settings, "FIREBASE_MESSAGING_SENDER_ID", ""),
+        ),
+        firebase_app_id=_pick_str(db("firebase_app_id"), getattr(settings, "FIREBASE_APP_ID", "")),
+        fcm_vapid_key=_pick_str(db("fcm_vapid_key"), getattr(settings, "FCM_VAPID_KEY", "")),
+        firebase_service_account_json=decrypt_secret(
+            _pick_str(
+                db("firebase_service_account_json"),
+                getattr(settings, "FIREBASE_SERVICE_ACCOUNT_JSON", ""),
+            )
         ),
     )
 

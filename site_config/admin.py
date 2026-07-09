@@ -1,12 +1,11 @@
 from django.contrib import admin, messages
 from django.http import HttpResponseRedirect
-from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils.html import format_html
 
 from email_service.service import send_test_email
 from duo_project.runtime_config import invalidate_integration_cache
-from site_config.forms import SECRET_FIELDS, OpenWeatherSettingsForm, SiteSettingsForm
+from site_config.forms import SECRET_FIELDS, SiteSettingsForm
 from site_config.models import SiteSettings
 
 
@@ -33,7 +32,8 @@ class SiteSettingsAdmin(admin.ModelAdmin):
         "email_host_password_status",
         "esewa_secret_key_status",
         "cloudinary_api_secret_status",
-        "openweather_admin_link",
+        "firebase_service_account_json_status",
+        "openweather_api_key_status",
     )
 
     fieldsets = (
@@ -130,17 +130,45 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                 "description": "Profile photos, chat media, and verification selfies.",
             },
         ),
-        ("Meta", {"fields": ("openweather_admin_link", "updated_at")}),
+        (
+            "Firebase Cloud Messaging",
+            {
+                "fields": (
+                    "fcm_enabled",
+                    "firebase_project_id",
+                    "firebase_api_key",
+                    "firebase_auth_domain",
+                    "firebase_messaging_sender_id",
+                    "firebase_app_id",
+                    "fcm_vapid_key",
+                    "firebase_service_account_json_status",
+                    "firebase_service_account_json",
+                ),
+                "description": (
+                    "Push notifications for new chat messages and matches. "
+                    "Create a Firebase web app, enable Cloud Messaging, and upload the service account JSON."
+                ),
+            },
+        ),
+        (
+            "OpenWeather",
+            {
+                "fields": (
+                    "openweather_api_key_status",
+                    "openweather_api_key",
+                ),
+                "description": (
+                    "Live map weather (current conditions, forecast, air quality). "
+                    "Values here override OPENWEATHER_API_KEY from environment when set."
+                ),
+            },
+        ),
+        ("Meta", {"fields": ("updated_at",)}),
     )
 
     def get_urls(self):
         urls = super().get_urls()
         custom = [
-            path(
-                "openweather/",
-                self.admin_site.admin_view(self.openweather_settings_view),
-                name="site_config_sitesettings_openweather",
-            ),
             path(
                 "send-test-email/",
                 self.admin_site.admin_view(self.send_test_email_view),
@@ -148,44 +176,6 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             ),
         ]
         return custom + urls
-
-    def openweather_settings_view(self, request):
-        obj = SiteSettings.get_solo()
-
-        if request.method == "POST":
-            form = OpenWeatherSettingsForm(request.POST, instance=obj)
-            if form.is_valid():
-                form.save()
-                invalidate_integration_cache()
-                if (form.cleaned_data.get("openweather_api_key") or "").strip():
-                    messages.success(request, "OpenWeather API key saved.")
-                else:
-                    messages.success(
-                        request,
-                        "OpenWeather settings saved. Existing API key was kept unchanged.",
-                    )
-                return HttpResponseRedirect(
-                    reverse("admin:site_config_sitesettings_openweather")
-                )
-        else:
-            form = OpenWeatherSettingsForm(instance=obj)
-
-        context = {
-            **self.admin_site.each_context(request),
-            "opts": self.model._meta,
-            "form": form,
-            "object": obj,
-            "title": "OpenWeather",
-            "secret_status": _secret_status_html(obj.openweather_api_key),
-            "integration_settings_url": reverse(
-                "admin:site_config_sitesettings_change", args=[obj.pk]
-            ),
-        }
-        return TemplateResponse(
-            request,
-            "admin/site_config/sitesettings/openweather.html",
-            context,
-        )
 
     def send_test_email_view(self, request):
         if request.method != "POST":
@@ -227,14 +217,13 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     def cloudinary_api_secret_status(self, obj):
         return _secret_status_html(obj.cloudinary_api_secret)
 
-    @admin.display(description="OpenWeather")
-    def openweather_admin_link(self, obj):
-        url = reverse("admin:site_config_sitesettings_openweather")
-        return format_html(
-            '<a href="{}"><i class="fas fa-cloud-sun" aria-hidden="true"></i> '
-            "OpenWeather API settings</a>",
-            url,
-        )
+    @admin.display(description="Firebase service account")
+    def firebase_service_account_json_status(self, obj):
+        return _secret_status_html(obj.firebase_service_account_json)
+
+    @admin.display(description="OpenWeather API key")
+    def openweather_api_key_status(self, obj):
+        return _secret_status_html(obj.openweather_api_key)
 
     def has_add_permission(self, request):
         return False
@@ -255,6 +244,7 @@ class SiteSettingsAdmin(admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         form.save()
+        invalidate_integration_cache()
         updated_secrets = [
             name
             for name in SECRET_FIELDS

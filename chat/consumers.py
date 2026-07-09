@@ -168,6 +168,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 content=content,
                 image_url=image_url,
             )
+            from notifications.dispatch import dispatch_chat_message_push
+
+            dispatch_chat_message_push(msg)
             return {
                 "id": msg.id,
                 "content": msg.content,

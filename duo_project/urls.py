@@ -39,6 +39,7 @@ urlpatterns = [
     path("api/photos/", include("photo_verification.urls")),
     path("api/verification/", include("photo_verification.verification_urls")),
     path("api/weather/", include("weather.urls")),
+    path("api/notifications/", include("notifications.urls")),
 ]
 
 if settings.DEBUG:

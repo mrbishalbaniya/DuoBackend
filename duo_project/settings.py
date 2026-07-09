@@ -101,6 +101,7 @@ INSTALLED_APPS = [
     "subscriptions",
     "photo_verification",
     "weather",
+    "notifications",
 ]
 
 MIDDLEWARE = [
@@ -219,6 +220,16 @@ CLOUDINARY_VERIFICATION_FOLDER = config(
 
 # OpenWeather — server-side only; never expose to the client
 OPENWEATHER_API_KEY = env("OPENWEATHER_API_KEY")
+
+# Firebase Cloud Messaging — admin DB values override these env defaults
+FCM_ENABLED = config("FCM_ENABLED", default=False, cast=bool)
+FIREBASE_PROJECT_ID = env("FIREBASE_PROJECT_ID")
+FIREBASE_API_KEY = env("FIREBASE_API_KEY")
+FIREBASE_AUTH_DOMAIN = env("FIREBASE_AUTH_DOMAIN")
+FIREBASE_MESSAGING_SENDER_ID = env("FIREBASE_MESSAGING_SENDER_ID")
+FIREBASE_APP_ID = env("FIREBASE_APP_ID")
+FCM_VAPID_KEY = env("FCM_VAPID_KEY")
+FIREBASE_SERVICE_ACCOUNT_JSON = env("FIREBASE_SERVICE_ACCOUNT_JSON")
 
 # Photo verification / AI analysis
 PHOTO_VERIFICATION_STRICT_REJECT = config("PHOTO_VERIFICATION_STRICT_REJECT", default=True, cast=bool)
@@ -511,16 +522,6 @@ JAZZMIN_SETTINGS = {
         "subscriptions",
         "auth",
     ],
-    "custom_links": {
-        "site_config": [
-            {
-                "name": "OpenWeather",
-                "url": "admin:site_config_sitesettings_openweather",
-                "icon": "fas fa-cloud-sun",
-                "permissions": ["site_config.change_sitesettings"],
-            },
-        ],
-    },
     "colorscale": "indigo",
 }
 

@@ -9,4 +9,4 @@ if (-not (Test-Path $Python)) {
 }
 
 Set-Location $Root
-& $Python manage.py runserver 8001
+& $Python manage.py runserver 8000

@@ -113,6 +113,10 @@ class MessageListView(APIView):
             timestamp=msg.timestamp.isoformat(),
         )
 
+        from notifications.dispatch import dispatch_chat_message_push
+
+        dispatch_chat_message_push(msg)
+
         return Response(
             MessageSerializer(msg, context={'request': request}).data,
             status=status.HTTP_201_CREATED

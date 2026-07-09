@@ -178,6 +178,49 @@ class SiteSettings(models.Model):
         help_text="OpenWeather API key from openweathermap.org/api_keys. Leave blank when saving to keep the current value.",
     )
 
+    # Firebase Cloud Messaging (push notifications)
+    fcm_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable web and mobile push notifications via Firebase Cloud Messaging.",
+    )
+    firebase_project_id = models.CharField(
+        max_length=128,
+        blank=True,
+        help_text="Firebase project ID from Project settings.",
+    )
+    firebase_api_key = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Web API key from Firebase Console → Project settings → Your apps.",
+    )
+    firebase_auth_domain = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="e.g. your-project.firebaseapp.com",
+    )
+    firebase_messaging_sender_id = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="Messaging sender ID (numeric) from Firebase web app config.",
+    )
+    firebase_app_id = models.CharField(
+        max_length=128,
+        blank=True,
+        help_text="Firebase web app ID (1:...:web:...).",
+    )
+    fcm_vapid_key = models.CharField(
+        max_length=512,
+        blank=True,
+        help_text="Web Push certificate public key from Firebase → Cloud Messaging → Web configuration.",
+    )
+    firebase_service_account_json = models.TextField(
+        blank=True,
+        help_text=(
+            "Service account JSON with Firebase Cloud Messaging Admin role. "
+            "Leave blank when saving to keep the current value."
+        ),
+    )
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
