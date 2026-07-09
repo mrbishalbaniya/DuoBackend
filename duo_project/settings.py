@@ -100,6 +100,7 @@ INSTALLED_APPS = [
     "chat",
     "subscriptions",
     "photo_verification",
+    "weather",
 ]
 
 MIDDLEWARE = [
@@ -215,6 +216,9 @@ CLOUDINARY_CHAT_FOLDER = config("CLOUDINARY_CHAT_FOLDER", default="duo/chat_medi
 CLOUDINARY_VERIFICATION_FOLDER = config(
     "CLOUDINARY_VERIFICATION_FOLDER", default="duo/verification_selfies"
 )
+
+# OpenWeather — server-side only; never expose to the client
+OPENWEATHER_API_KEY = env("OPENWEATHER_API_KEY")
 
 # Photo verification / AI analysis
 PHOTO_VERIFICATION_STRICT_REJECT = config("PHOTO_VERIFICATION_STRICT_REJECT", default=True, cast=bool)
@@ -332,6 +336,7 @@ REST_FRAMEWORK = {
         "anon": "60/minute",
         "user": "300/minute",
         "auth": "10/minute",
+        "weather": "120/minute",
     },
     "EXCEPTION_HANDLER": "duo_project.exceptions.custom_exception_handler",
 }
@@ -359,6 +364,7 @@ SPECTACULAR_SETTINGS = {
         {"name": "Subscriptions", "description": "Duo Premium plans and eSewa payments."},
         {"name": "Photos", "description": "AI profile photo verification and quality analysis."},
         {"name": "Verification", "description": "Selfie liveness and face-matching verification."},
+        {"name": "Weather", "description": "Live OpenWeather proxy — forecasts, tiles, air quality."},
     ],
     "SWAGGER_UI_SETTINGS": {
         "deepLinking": True,

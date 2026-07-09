@@ -38,6 +38,7 @@ urlpatterns = [
     path("api/subscriptions/", include("subscriptions.urls")),
     path("api/photos/", include("photo_verification.urls")),
     path("api/verification/", include("photo_verification.verification_urls")),
+    path("api/weather/", include("weather.urls")),
 ]
 
 if settings.DEBUG:
