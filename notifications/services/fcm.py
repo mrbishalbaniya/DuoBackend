@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 import requests
+from django.conf import settings
 from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 
@@ -17,6 +18,16 @@ class FCMError(Exception):
     def __init__(self, message: str, status_code: int = 502):
         super().__init__(message)
         self.status_code = status_code
+
+
+def _default_icon() -> str:
+    frontend = getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
+    return f"{frontend}/icons/duo-notification-192.png"
+
+
+def _default_badge() -> str:
+    frontend = getattr(settings, "FRONTEND_URL", "http://localhost:3000").rstrip("/")
+    return f"{frontend}/icons/duo-badge-96.png"
 
 
 class FCMService:
@@ -52,23 +63,61 @@ class FCMService:
         body: str,
         data: dict[str, str] | None = None,
         link: str = "",
+        icon: str = "",
+        image: str = "",
+        tag: str = "",
+        badge: str = "",
     ) -> bool:
         if not self.is_configured():
             return False
 
+        icon_url = (icon or _default_icon()).strip()
+        badge_url = (badge or _default_badge()).strip()
+        image_url = (image or "").strip()
+
+        relative_url = ""
+        if data and data.get("url"):
+            relative_url = str(data["url"])
+        elif link:
+            frontend = getattr(settings, "FRONTEND_URL", "").rstrip("/")
+            if frontend and link.startswith(frontend):
+                relative_url = link[len(frontend) :] or "/"
+            else:
+                relative_url = link
+
+        # Data-only payload so the service worker can render a custom notification
+        # (avoids the browser auto-showing a plain duplicate).
+        payload_data: dict[str, str] = {
+            "title": title,
+            "body": body,
+            "icon": icon_url,
+            "badge": badge_url,
+            "url": relative_url or "/message",
+        }
+        if image_url:
+            payload_data["image"] = image_url
+        if tag:
+            payload_data["tag"] = tag
+        if data:
+            for key, value in data.items():
+                payload_data[str(key)] = str(value)
+
+        webpush: dict[str, Any] = {
+            "headers": {
+                "Urgency": "high",
+                "TTL": "86400",
+            },
+        }
+        if link:
+            webpush["fcm_options"] = {"link": link}
+
         payload: dict[str, Any] = {
             "message": {
                 "token": token,
-                "notification": {
-                    "title": title,
-                    "body": body,
-                },
+                "data": payload_data,
+                "webpush": webpush,
             }
         }
-        if data:
-            payload["message"]["data"] = {key: str(value) for key, value in data.items()}
-        if link:
-            payload["message"]["webpush"] = {"fcm_options": {"link": link}}
 
         headers = {
             "Authorization": f"Bearer {self._access_token()}",
@@ -91,7 +140,17 @@ class FCMService:
                 response.status_code,
                 response.text[:300],
             )
-            if response.status_code in {404, 410}:
+            if response.status_code in {404, 410} or (
+                response.status_code == 400
+                and any(
+                    marker in response.text
+                    for marker in (
+                        "UNREGISTERED",
+                        "INVALID_ARGUMENT",
+                        "NOT_FOUND",
+                    )
+                )
+            ):
                 from notifications.models import DeviceToken
 
                 DeviceToken.objects.filter(token=token).update(is_active=False)
@@ -107,6 +166,10 @@ class FCMService:
         body: str,
         data: dict[str, str] | None = None,
         link: str = "",
+        icon: str = "",
+        image: str = "",
+        tag: str = "",
+        badge: str = "",
     ) -> int:
         from notifications.models import DeviceToken
 
@@ -115,8 +178,22 @@ class FCMService:
                 "token", flat=True
             )
         )
+        if not tokens:
+            logger.debug("No active FCM tokens for user %s", user_id)
+            return 0
+
         sent = 0
         for token in tokens:
-            if self.send_to_token(token, title=title, body=body, data=data, link=link):
+            if self.send_to_token(
+                token,
+                title=title,
+                body=body,
+                data=data,
+                link=link,
+                icon=icon,
+                image=image,
+                tag=tag,
+                badge=badge,
+            ):
                 sent += 1
         return sent

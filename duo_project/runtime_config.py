@@ -139,8 +139,8 @@ def get_integration_settings() -> IntegrationSettings:
 
     cfg = IntegrationSettings(
         google_client_id=_pick_str(db("google_client_id"), settings.GOOGLE_OAUTH_CLIENT_ID),
-        google_client_secret=_pick_str(
-            db("google_client_secret"), settings.GOOGLE_OAUTH_CLIENT_SECRET
+        google_client_secret=decrypt_secret(
+            _pick_str(db("google_client_secret"), settings.GOOGLE_OAUTH_CLIENT_SECRET)
         ),
         google_redirect_uri=redirect_uri,
         google_allowed_redirect_uris=allowed,

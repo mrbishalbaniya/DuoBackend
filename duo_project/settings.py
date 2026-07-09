@@ -102,6 +102,8 @@ INSTALLED_APPS = [
     "photo_verification",
     "weather",
     "notifications",
+    "activity",
+    "avatars",
 ]
 
 MIDDLEWARE = [

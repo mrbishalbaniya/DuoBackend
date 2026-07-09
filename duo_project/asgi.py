@@ -18,13 +18,16 @@ django_asgi_app = get_asgi_application()
 from channels.routing import ProtocolTypeRouter, URLRouter
 
 import chat.routing
+import activity.routing
 from duo_project.channels_auth import JWTAuthMiddlewareStack
 
 application = ProtocolTypeRouter(
     {
         "http": django_asgi_app,
         "websocket": JWTAuthMiddlewareStack(
-            URLRouter(chat.routing.websocket_urlpatterns)
+            URLRouter(
+                chat.routing.websocket_urlpatterns + activity.routing.websocket_urlpatterns
+            )
         ),
     }
 )

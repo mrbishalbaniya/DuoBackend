@@ -168,6 +168,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 content=content,
                 image_url=image_url,
             )
+            # Reload with profile for rich push (name + photo).
+            msg = (
+                Message.objects.select_related("sender__profile", "conversation__match")
+                .get(id=msg.id)
+            )
             from notifications.dispatch import dispatch_chat_message_push
 
             dispatch_chat_message_push(msg)

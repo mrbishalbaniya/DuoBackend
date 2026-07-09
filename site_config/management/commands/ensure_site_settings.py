@@ -71,6 +71,30 @@ class Command(BaseCommand):
             obj.openweather_api_key = encrypt_secret(env_openweather.strip())
             updated.append("openweather_api_key")
 
+        env_google_id = getattr(settings, "GOOGLE_OAUTH_CLIENT_ID", "") or ""
+        if env_google_id and env_google_id != (obj.google_client_id or "").strip():
+            obj.google_client_id = env_google_id.strip()
+            updated.append("google_client_id")
+
+        env_google_secret = getattr(settings, "GOOGLE_OAUTH_CLIENT_SECRET", "") or ""
+        if env_google_secret and not is_placeholder(env_google_secret):
+            current_secret = decrypt_secret((obj.google_client_secret or "").strip())
+            if env_google_secret.strip() != current_secret:
+                obj.google_client_secret = encrypt_secret(env_google_secret.strip())
+                updated.append("google_client_secret")
+
+        env_google_redirect = getattr(settings, "GOOGLE_OAUTH_REDIRECT_URI", "") or ""
+        if env_google_redirect and env_google_redirect.strip() != (obj.google_redirect_uri or "").strip():
+            obj.google_redirect_uri = env_google_redirect.strip()
+            updated.append("google_redirect_uri")
+
+        env_google_allowed = getattr(settings, "GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS", None)
+        if env_google_allowed:
+            allowed_csv = ",".join(uri.strip() for uri in env_google_allowed if uri.strip())
+            if allowed_csv and allowed_csv != (obj.google_allowed_redirect_uris or "").strip():
+                obj.google_allowed_redirect_uris = allowed_csv
+                updated.append("google_allowed_redirect_uris")
+
         if not obj.email_port:
             obj.email_port = getattr(settings, "EMAIL_PORT", 587)
             updated.append("email_port")

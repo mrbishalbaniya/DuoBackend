@@ -63,6 +63,17 @@ class SwipeView(APIView):
                     match = self._create_match(request.user, to_user)
                     is_match = True
                     match_data = MatchSerializer(match, context={'request': request}).data
+                    from notifications.dispatch import dispatch_match_push
+
+                    dispatch_match_push(match=match)
+            else:
+                from notifications.dispatch import dispatch_like_push
+
+                dispatch_like_push(
+                    from_user=request.user,
+                    to_user=to_user,
+                    action=action,
+                )
 
         return Response({
             'action': action,

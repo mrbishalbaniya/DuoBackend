@@ -100,6 +100,10 @@ class MessageListView(APIView):
             content=serializer.validated_data.get('content', ''),
             image_url=serializer.validated_data.get('image_url', ''),
         )
+        msg = (
+            Message.objects.select_related("sender__profile", "conversation__match")
+            .get(id=msg.id)
+        )
 
         profile = getattr(request.user, "profile", None)
         sender_name = (getattr(profile, "full_name", None) or "").strip() or request.user.username
