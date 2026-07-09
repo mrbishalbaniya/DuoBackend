@@ -45,9 +45,21 @@ class OpenWeatherError(Exception):
 
 class OpenWeatherService:
     def __init__(self, api_key: str | None = None):
-        self.api_key = api_key or getattr(settings, "OPENWEATHER_API_KEY", "")
+        self.api_key = api_key or self._resolve_api_key()
         if not self.api_key:
             raise OpenWeatherError("OpenWeather API key is not configured.", status_code=503)
+
+    @staticmethod
+    def _resolve_api_key() -> str:
+        try:
+            from duo_project.runtime_config import get_integration_settings
+
+            key = get_integration_settings().openweather_api_key
+            if key:
+                return key
+        except Exception:
+            pass
+        return getattr(settings, "OPENWEATHER_API_KEY", "") or ""
 
     def _cache_key(self, namespace: str, *parts: Any) -> str:
         raw = ":".join(str(p) for p in parts)

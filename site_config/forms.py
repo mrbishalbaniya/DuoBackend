@@ -15,6 +15,7 @@ SECRET_FIELDS = (
     "brevo_api_key",
     "esewa_secret_key",
     "cloudinary_api_secret",
+    "openweather_api_key",
 )
 
 
@@ -131,4 +132,43 @@ class SiteSettingsForm(forms.ModelForm):
         if commit:
             instance.save()
             self.save_m2m()
+        return instance
+
+
+class OpenWeatherSettingsForm(forms.ModelForm):
+    class Meta:
+        model = SiteSettings
+        fields = ("openweather_api_key",)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        instance = self.instance
+        field = self.fields["openweather_api_key"]
+        stored = ""
+        if instance and instance.pk:
+            stored = (instance.openweather_api_key or "").strip()
+
+        configured = bool(stored)
+        field.widget = RevealablePasswordInput(configured=configured)
+        field.required = False
+        field.help_text = (
+            "Encrypted in database. Click Show to view, or type a new value to replace it."
+            if configured
+            else "Enter your API key from openweathermap.org/api_keys, then click Save."
+        )
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.pk = SiteSettings.SINGLETON_PK
+
+        previous = SiteSettings.objects.filter(pk=SiteSettings.SINGLETON_PK).first()
+        if previous:
+            new_value = (self.cleaned_data.get("openweather_api_key") or "").strip()
+            if not new_value:
+                instance.openweather_api_key = previous.openweather_api_key
+            else:
+                instance.openweather_api_key = encrypt_secret(new_value)
+
+        if commit:
+            instance.save()
         return instance

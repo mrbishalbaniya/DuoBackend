@@ -47,6 +47,7 @@ class IntegrationSettings:
     cloudinary_profile_folder: str
     cloudinary_chat_folder: str
     cloudinary_verification_folder: str
+    openweather_api_key: str
 
 
 def invalidate_integration_cache() -> None:
@@ -220,6 +221,9 @@ def get_integration_settings() -> IntegrationSettings:
             db("cloudinary_verification_folder"),
             settings.CLOUDINARY_VERIFICATION_FOLDER,
             "duo/verification_selfies",
+        ),
+        openweather_api_key=decrypt_secret(
+            _pick_str(db("openweather_api_key"), getattr(settings, "OPENWEATHER_API_KEY", ""))
         ),
     )
 

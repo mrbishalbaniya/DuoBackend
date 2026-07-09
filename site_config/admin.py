@@ -5,7 +5,8 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 
 from email_service.service import send_test_email
-from site_config.forms import SECRET_FIELDS, SiteSettingsForm
+from duo_project.runtime_config import invalidate_integration_cache
+from site_config.forms import SECRET_FIELDS, OpenWeatherSettingsForm, SiteSettingsForm
 from site_config.models import SiteSettings
 
 
@@ -32,6 +33,7 @@ class SiteSettingsAdmin(admin.ModelAdmin):
         "email_host_password_status",
         "esewa_secret_key_status",
         "cloudinary_api_secret_status",
+        "openweather_admin_link",
     )
 
     fieldsets = (
@@ -128,12 +130,17 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                 "description": "Profile photos, chat media, and verification selfies.",
             },
         ),
-        ("Meta", {"fields": ("updated_at",)}),
+        ("Meta", {"fields": ("openweather_admin_link", "updated_at")}),
     )
 
     def get_urls(self):
         urls = super().get_urls()
         custom = [
+            path(
+                "openweather/",
+                self.admin_site.admin_view(self.openweather_settings_view),
+                name="site_config_sitesettings_openweather",
+            ),
             path(
                 "send-test-email/",
                 self.admin_site.admin_view(self.send_test_email_view),
@@ -141,6 +148,44 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             ),
         ]
         return custom + urls
+
+    def openweather_settings_view(self, request):
+        obj = SiteSettings.get_solo()
+
+        if request.method == "POST":
+            form = OpenWeatherSettingsForm(request.POST, instance=obj)
+            if form.is_valid():
+                form.save()
+                invalidate_integration_cache()
+                if (form.cleaned_data.get("openweather_api_key") or "").strip():
+                    messages.success(request, "OpenWeather API key saved.")
+                else:
+                    messages.success(
+                        request,
+                        "OpenWeather settings saved. Existing API key was kept unchanged.",
+                    )
+                return HttpResponseRedirect(
+                    reverse("admin:site_config_sitesettings_openweather")
+                )
+        else:
+            form = OpenWeatherSettingsForm(instance=obj)
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "form": form,
+            "object": obj,
+            "title": "OpenWeather",
+            "secret_status": _secret_status_html(obj.openweather_api_key),
+            "integration_settings_url": reverse(
+                "admin:site_config_sitesettings_change", args=[obj.pk]
+            ),
+        }
+        return TemplateResponse(
+            request,
+            "admin/site_config/sitesettings/openweather.html",
+            context,
+        )
 
     def send_test_email_view(self, request):
         if request.method != "POST":
@@ -181,6 +226,15 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     @admin.display(description="Cloudinary API secret")
     def cloudinary_api_secret_status(self, obj):
         return _secret_status_html(obj.cloudinary_api_secret)
+
+    @admin.display(description="OpenWeather")
+    def openweather_admin_link(self, obj):
+        url = reverse("admin:site_config_sitesettings_openweather")
+        return format_html(
+            '<a href="{}"><i class="fas fa-cloud-sun" aria-hidden="true"></i> '
+            "OpenWeather API settings</a>",
+            url,
+        )
 
     def has_add_permission(self, request):
         return False

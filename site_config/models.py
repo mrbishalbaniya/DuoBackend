@@ -171,6 +171,13 @@ class SiteSettings(models.Model):
         default="duo/verification_selfies",
     )
 
+    # OpenWeather (live map weather)
+    openweather_api_key = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="OpenWeather API key from openweathermap.org/api_keys. Leave blank when saving to keep the current value.",
+    )
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

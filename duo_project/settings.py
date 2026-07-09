@@ -511,6 +511,16 @@ JAZZMIN_SETTINGS = {
         "subscriptions",
         "auth",
     ],
+    "custom_links": {
+        "site_config": [
+            {
+                "name": "OpenWeather",
+                "url": "admin:site_config_sitesettings_openweather",
+                "icon": "fas fa-cloud-sun",
+                "permissions": ["site_config.change_sitesettings"],
+            },
+        ],
+    },
     "colorscale": "indigo",
 }
 

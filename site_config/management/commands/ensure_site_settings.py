@@ -2,6 +2,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from email_service.credentials import is_placeholder
+from duo_project.runtime_config import invalidate_integration_cache
 from duo_project.secret_fields import decrypt_secret, encrypt_secret
 from site_config.models import SiteSettings
 
@@ -64,6 +65,11 @@ class Command(BaseCommand):
         if env_from_name and not obj.email_from_name:
             obj.email_from_name = env_from_name
             updated.append("email_from_name")
+
+        env_openweather = getattr(settings, "OPENWEATHER_API_KEY", "") or ""
+        if env_openweather and not obj.openweather_api_key and not is_placeholder(env_openweather):
+            obj.openweather_api_key = encrypt_secret(env_openweather.strip())
+            updated.append("openweather_api_key")
 
         if not obj.email_port:
             obj.email_port = getattr(settings, "EMAIL_PORT", 587)
