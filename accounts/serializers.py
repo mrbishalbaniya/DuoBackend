@@ -7,6 +7,12 @@ from subscriptions.services import get_active_subscription, user_has_active_subs
 
 User = get_user_model()
 
+LOCATION_PRIVACY_FIELDS = (
+    "location_ghost_mode",
+    "location_visibility",
+    "location_visibility_friends",
+)
+
 
 class ProfileSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source="user.id", read_only=True)
@@ -48,6 +54,9 @@ class ProfileSerializer(serializers.ModelSerializer):
             "pref_relationship_goal",
             "pref_verified_only",
             "relationship_goal",
+            "location_ghost_mode",
+            "location_visibility",
+            "location_visibility_friends",
             "is_verified",
             "is_onboarded",
             "profile_completeness",
@@ -65,12 +74,75 @@ class ProfileSerializer(serializers.ModelSerializer):
             "subscription_expires_at",
         ]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        viewer = getattr(request, "user", None) if request else None
+        owner_id = getattr(instance, "user_id", None) or getattr(
+            getattr(instance, "user", None), "id", None
+        )
+        is_owner = (
+            viewer is not None
+            and getattr(viewer, "is_authenticated", False)
+            and owner_id is not None
+            and int(viewer.id) == int(owner_id)
+        )
+        if not is_owner:
+            for field in LOCATION_PRIVACY_FIELDS:
+                data.pop(field, None)
+        return data
+
     def get_is_premium(self, obj):
         return user_has_active_subscription(obj.user)
 
     def get_subscription_expires_at(self, obj):
         active = get_active_subscription(obj.user)
         return active.expires_at if active else None
+
+    def validate_location_visibility(self, value):
+        allowed = {choice[0] for choice in Profile.LOCATION_VISIBILITY_CHOICES}
+        if value not in allowed:
+            raise serializers.ValidationError("Invalid location visibility option.")
+        return value
+
+    def validate_location_visibility_friends(self, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Must be a list of user ids.")
+        cleaned: list[int] = []
+        for item in value:
+            try:
+                cleaned.append(int(item))
+            except (TypeError, ValueError) as exc:
+                raise serializers.ValidationError("Friend ids must be integers.") from exc
+        return list(dict.fromkeys(cleaned))
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
+        friend_ids = attrs.get("location_visibility_friends")
+        if friend_ids is None or user is None or not getattr(user, "is_authenticated", False):
+            return attrs
+
+        from matching.models import Match
+        from django.db.models import Q
+
+        matched_ids = set()
+        for match in Match.objects.filter(Q(user1=user) | Q(user2=user)):
+            matched_ids.add(match.get_other_user(user).id)
+
+        invalid = [uid for uid in friend_ids if uid not in matched_ids]
+        if invalid:
+            raise serializers.ValidationError(
+                {
+                    "location_visibility_friends": (
+                        "Only matched friends can be selected for location privacy."
+                    )
+                }
+            )
+        return attrs
 
 
 class UserSerializer(serializers.ModelSerializer):

@@ -66,7 +66,7 @@ def dispatch_chat_message_push(message) -> None:
         else:
             body = "Sent you a new message"
 
-        link = f"{_frontend_url()}/message?conversation={convo.id}"
+        link = f"{_frontend_url()}/chat?conversation={convo.public_id}"
         photo = _photo_url(message.sender)
 
         service.send_to_user(
@@ -75,9 +75,9 @@ def dispatch_chat_message_push(message) -> None:
             body=body[:200],
             data={
                 "type": "chat_message",
-                "conversation_id": str(convo.id),
+                "conversation_id": str(convo.public_id),
                 "sender_id": str(message.sender_id),
-                "url": f"/message?conversation={convo.id}",
+                "url": f"/chat?conversation={convo.public_id}",
                 "theme": "duo",
             },
             link=link,
@@ -146,7 +146,9 @@ def dispatch_match_push(*, match) -> None:
 
         conversation = getattr(match, "conversation", None)
         chat_path = (
-            f"/message?conversation={conversation.id}" if conversation is not None else "/chat"
+            f"/chat?conversation={conversation.public_id}"
+            if conversation is not None
+            else "/chat"
         )
         link = f"{_frontend_url()}{chat_path}"
 

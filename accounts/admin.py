@@ -23,6 +23,8 @@ class ProfileAdmin(admin.ModelAdmin):
         "pref_gender",
         "pref_relationship_goal",
         "pref_verified_only",
+        "location_ghost_mode",
+        "location_visibility",
         "is_verified",
         "is_onboarded",
         "created_at",
@@ -123,6 +125,16 @@ class ProfileAdmin(admin.ModelAdmin):
                     "pref_relationship_goal",
                     "pref_verified_only",
                     "pref_values",
+                ),
+            },
+        ),
+        (
+            "Map location privacy",
+            {
+                "fields": (
+                    "location_ghost_mode",
+                    "location_visibility",
+                    "location_visibility_friends",
                 ),
             },
         ),

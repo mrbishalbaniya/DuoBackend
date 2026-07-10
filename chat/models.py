@@ -1,12 +1,21 @@
 from django.db import models
 from django.contrib.auth.models import User
 from matching.models import Match
+import secrets
+
+
+def generate_conversation_public_id() -> str:
+    """Return a unique-looking 10-digit public id (1_000_000_000 … 9_999_999_999)."""
+    return str(secrets.randbelow(9_000_000_000) + 1_000_000_000)
 
 
 class Conversation(models.Model):
     match = models.OneToOneField(Match, on_delete=models.CASCADE, related_name='conversation')
+    # Stable shareable id used in /chat?conversation=… (never the autoincrement pk).
+    public_id = models.CharField(max_length=10, unique=True, db_index=True, editable=False)
     user1_last_typed = models.DateTimeField(null=True, blank=True)
     user2_last_typed = models.DateTimeField(null=True, blank=True)
+    last_message_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -14,6 +23,17 @@ class Conversation(models.Model):
 
     def get_other_user(self, user):
         return self.match.get_other_user(user)
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            for _ in range(20):
+                candidate = generate_conversation_public_id()
+                if not Conversation.objects.filter(public_id=candidate).exists():
+                    self.public_id = candidate
+                    break
+            else:
+                raise RuntimeError("Could not allocate a unique conversation public_id")
+        super().save(*args, **kwargs)
 
 
 class ConversationPreference(models.Model):
@@ -24,6 +44,9 @@ class ConversationPreference(models.Model):
         related_name='preferences',
     )
     nickname = models.CharField(max_length=64, blank=True, default='')
+    is_archived = models.BooleanField(default=False)
+    is_muted = models.BooleanField(default=False)
+    is_pinned = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -63,11 +86,31 @@ class UserReport(models.Model):
 
 
 class Message(models.Model):
+    MESSAGE_TYPE_TEXT = "text"
+    MESSAGE_TYPE_IMAGE = "image"
+    MESSAGE_TYPE_VOICE = "voice"
+    MESSAGE_TYPE_CHOICES = [
+        (MESSAGE_TYPE_TEXT, "Text"),
+        (MESSAGE_TYPE_IMAGE, "Image"),
+        (MESSAGE_TYPE_VOICE, "Voice"),
+    ]
+
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey(User, on_delete=models.CASCADE)
     content = models.TextField(blank=True)
     image_url = models.CharField(max_length=1000, blank=True)
+    message_type = models.CharField(max_length=10, choices=MESSAGE_TYPE_CHOICES, default=MESSAGE_TYPE_TEXT)
+    reply_to = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="replies",
+    )
     timestamp = models.DateTimeField(auto_now_add=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    edited_at = models.DateTimeField(null=True, blank=True)
     is_read = models.BooleanField(default=False)
     
     # Deletion flags

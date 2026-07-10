@@ -373,7 +373,12 @@ class MyProfileView(APIView):
         responses={200: ProfileSerializer},
     )
     def put(self, request):
-        serializer = ProfileSerializer(request.user.profile, data=request.data, partial=True)
+        serializer = ProfileSerializer(
+            request.user.profile,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)

@@ -4,29 +4,58 @@ from rest_framework import status, parsers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db.models import Q
+from django.db.models import Count, Exists, OuterRef, Q
 from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_chat_media
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from matching.models import Swipe
 
 from .models import Conversation, ConversationPreference, Message, UserBlock, UserReport
-from .realtime import broadcast_chat_message, broadcast_typing_status
+from .realtime import (
+    broadcast_chat_message,
+    broadcast_message_deleted,
+    broadcast_message_reacted,
+    broadcast_messages_read,
+    broadcast_typing_status,
+)
 from .serializers import ConversationSerializer, MessageSerializer, SendMessageSerializer
+from .services import (
+    conversation_is_blocked,
+    delete_message_for_user,
+    infer_message_type,
+    mark_messages_delivered,
+    mark_messages_read,
+    react_to_message,
+    touch_conversation_activity,
+)
+
+
+def resolve_conversation(lookup):
+    """Resolve by 10-digit public_id, with legacy autoincrement id fallback."""
+    qs = Conversation.objects.select_related(
+        "match",
+        "match__user1",
+        "match__user2",
+    )
+    key = str(lookup).strip()
+    convo = qs.filter(public_id=key).first()
+    if convo:
+        return convo
+    if key.isdigit() and len(key) < 10:
+        return qs.filter(id=int(key)).first()
+    return None
 
 
 def get_user_conversation(conversation_id, user):
-    try:
-        convo = Conversation.objects.select_related(
-            'match',
-            'match__user1',
-            'match__user2',
-        ).get(id=conversation_id)
-    except Conversation.DoesNotExist:
+    convo = resolve_conversation(conversation_id)
+    if convo is None:
         return None, Response({'detail': 'Conversation not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     match = convo.match
     if user not in (match.user1, match.user2):
         return None, Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
+
+    if conversation_is_blocked(convo, user):
+        return None, Response({'detail': 'This conversation is unavailable.'}, status=status.HTTP_403_FORBIDDEN)
 
     return convo, None
 
@@ -40,9 +69,39 @@ class ConversationListView(APIView):
         responses={200: ConversationSerializer(many=True)},
     )
     def get(self, request):
-        convos = Conversation.objects.filter(
-            Q(match__user1=request.user) | Q(match__user2=request.user)
-        ).order_by('-created_at')
+        show_archived = request.query_params.get('archived') == 'true'
+        unread_only = request.query_params.get('unread') == 'true'
+
+        convos = (
+            Conversation.objects.filter(
+                Q(match__user1=request.user) | Q(match__user2=request.user)
+            )
+            .annotate(
+                unread_count_annotated=Count(
+                    "messages",
+                    filter=Q(messages__is_read=False) & ~Q(messages__sender=request.user),
+                )
+            )
+        )
+
+        if not show_archived:
+            convos = convos.exclude(
+                preferences__user=request.user,
+                preferences__is_archived=True,
+            )
+
+        if unread_only:
+            convos = convos.filter(unread_count_annotated__gt=0)
+
+        convos = convos.annotate(
+            pinned_for_user=Exists(
+                ConversationPreference.objects.filter(
+                    conversation=OuterRef('pk'),
+                    user=request.user,
+                    is_pinned=True,
+                )
+            )
+        ).order_by('-pinned_for_user', '-last_message_at', '-created_at')
         serializer = ConversationSerializer(convos, many=True, context={'request': request})
         return Response(serializer.data)
 
@@ -56,24 +115,47 @@ class MessageListView(APIView):
         responses={200: MessageSerializer(many=True)},
     )
     def get(self, request, conversation_id):
-        try:
-            convo = Conversation.objects.get(
-                id=conversation_id
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
+
+        limit = min(int(request.query_params.get('limit', 50)), 100)
+        before = request.query_params.get('before')
+
+        qs = convo.messages.select_related(
+            'sender__profile',
+            'reply_to',
+            'reply_to__sender__profile',
+        ).prefetch_related('reactions', 'deleted_by')
+
+        if before:
+            try:
+                before_id = int(before)
+                qs = qs.filter(id__lt=before_id)
+            except (TypeError, ValueError):
+                pass
+
+        messages = list(qs.order_by('-timestamp', '-id')[:limit])
+        messages.reverse()
+
+        read_ids = mark_messages_read(convo, request.user)
+        if read_ids:
+            broadcast_messages_read(
+                convo.public_id,
+                reader_id=request.user.id,
+                message_ids=read_ids,
             )
-        except Conversation.DoesNotExist:
-            return Response({'error': 'Conversation not found'}, status=404)
 
-        # Verify user is part of this conversation
-        match = convo.match
-        if request.user not in [match.user1, match.user2]:
-            return Response({'error': 'Forbidden'}, status=403)
+        mark_messages_delivered(convo, request.user)
 
-        # Mark messages as read
-        convo.messages.exclude(sender=request.user).update(is_read=True)
-
-        messages = convo.messages.all()
         serializer = MessageSerializer(messages, many=True, context={'request': request})
-        return Response(serializer.data)
+        payload = serializer.data
+        has_more = len(messages) == limit
+        return Response({
+            'results': payload,
+            'has_more': has_more,
+            'next_before': messages[0]['id'] if has_more and messages else None,
+        })
 
     @extend_schema(
         tags=["Chat"],
@@ -82,39 +164,57 @@ class MessageListView(APIView):
         responses={201: MessageSerializer},
     )
     def post(self, request, conversation_id):
-        try:
-            convo = Conversation.objects.get(id=conversation_id)
-        except Conversation.DoesNotExist:
-            return Response({'error': 'Conversation not found'}, status=404)
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
 
-        match = convo.match
-        if request.user not in [match.user1, match.user2]:
-            return Response({'error': 'Forbidden'}, status=403)
-
-        serializer = SendMessageSerializer(data=request.data)
+        serializer = SendMessageSerializer(
+            data=request.data,
+            context={'conversation': convo},
+        )
         serializer.is_valid(raise_exception=True)
+
+        content = serializer.validated_data.get('content', '')
+        image_url = serializer.validated_data.get('image_url', '')
+        reply_to_id = serializer.validated_data.get('reply_to_id')
+
+        reply_to = None
+        if reply_to_id:
+            reply_to = convo.messages.filter(id=reply_to_id).first()
 
         msg = Message.objects.create(
             conversation=convo,
             sender=request.user,
-            content=serializer.validated_data.get('content', ''),
-            image_url=serializer.validated_data.get('image_url', ''),
+            content=content,
+            image_url=image_url,
+            message_type=infer_message_type(content, image_url),
+            reply_to=reply_to,
         )
+        touch_conversation_activity(convo, msg.timestamp)
+
         msg = (
-            Message.objects.select_related("sender__profile", "conversation__match")
+            Message.objects.select_related(
+                "sender__profile",
+                "conversation__match",
+                "reply_to",
+                "reply_to__sender__profile",
+            )
+            .prefetch_related('reactions')
             .get(id=msg.id)
         )
 
         profile = getattr(request.user, "profile", None)
         sender_name = (getattr(profile, "full_name", None) or "").strip() or request.user.username
         broadcast_chat_message(
-            convo.id,
+            convo.public_id,
             msg_id=msg.id,
             content=msg.content,
             image_url=msg.image_url,
             sender_id=request.user.id,
             sender_name=sender_name,
             timestamp=msg.timestamp.isoformat(),
+            message_type=msg.message_type,
+            reply_to=MessageSerializer(msg, context={'request': request}).data.get('reply_to'),
         )
 
         from notifications.dispatch import dispatch_chat_message_push
@@ -127,6 +227,67 @@ class MessageListView(APIView):
         )
 
 
+class MessageDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Chat"], summary="Delete a message")
+    def post(self, request, message_id):
+        delete_type = str(request.data.get('delete_type', 'for_me')).strip()
+        if delete_type not in ('for_me', 'for_everyone'):
+            return Response({'detail': 'Invalid delete_type.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            msg = Message.objects.select_related('conversation__match').get(id=message_id)
+        except Message.DoesNotExist:
+            return Response({'detail': 'Message not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        convo = msg.conversation
+        _, error = get_user_conversation(convo.public_id, request.user)
+        if error:
+            return error
+
+        if not delete_message_for_user(msg, request.user, delete_type):
+            return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
+
+        broadcast_message_deleted(
+            convo.public_id,
+            message_id=msg.id,
+            user_id=request.user.id,
+            delete_type=delete_type,
+        )
+        return Response({'detail': 'Message deleted.'})
+
+
+class MessageReactView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Chat"], summary="React to a message")
+    def post(self, request, message_id):
+        emoji = str(request.data.get('emoji', '')).strip()
+        if not emoji:
+            return Response({'detail': 'Emoji is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            msg = Message.objects.select_related('conversation__match').prefetch_related('reactions').get(id=message_id)
+        except Message.DoesNotExist:
+            return Response({'detail': 'Message not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        convo = msg.conversation
+        convo_check, error = get_user_conversation(convo.public_id, request.user)
+        if error:
+            return error
+
+        reactions = react_to_message(msg, request.user, emoji)
+        broadcast_message_reacted(
+            convo.public_id,
+            message_id=msg.id,
+            user_id=request.user.id,
+            emoji=emoji,
+            reactions=reactions,
+        )
+        return Response(MessageSerializer(msg, context={'request': request}).data)
+
+
 class ConversationDetailView(APIView):
     """Get a single conversation's details."""
 
@@ -136,14 +297,9 @@ class ConversationDetailView(APIView):
         responses={200: ConversationSerializer},
     )
     def get(self, request, conversation_id):
-        try:
-            convo = Conversation.objects.get(id=conversation_id)
-        except Conversation.DoesNotExist:
-            return Response({'error': 'Conversation not found'}, status=404)
-
-        match = convo.match
-        if request.user not in [match.user1, match.user2]:
-            return Response({'error': 'Forbidden'}, status=403)
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
 
         return Response(ConversationSerializer(convo, context={'request': request}).data)
 
@@ -157,23 +313,20 @@ class TypingHeartbeatView(APIView):
         responses={200: OpenApiResponse(description="Typing timestamp updated.")},
     )
     def post(self, request, conversation_id):
-        try:
-            convo = Conversation.objects.get(id=conversation_id)
-        except Conversation.DoesNotExist:
-            return Response({'error': 'Conversation not found'}, status=404)
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
 
         match = convo.match
-        if request.user not in [match.user1, match.user2]:
-            return Response({'error': 'Forbidden'}, status=403)
-
         if match.user1 == request.user:
             convo.user1_last_typed = timezone.now()
         else:
             convo.user2_last_typed = timezone.now()
-        
+
         convo.save(update_fields=['user1_last_typed', 'user2_last_typed'])
-        broadcast_typing_status(convo.id, user_id=request.user.id, is_typing=True)
+        broadcast_typing_status(convo.public_id, user_id=request.user.id, is_typing=True)
         return Response({'status': 'ok'})
+
 
 class ImageUploadView(APIView):
     """Upload an image for chat."""
@@ -212,22 +365,40 @@ class ConversationSettingsView(APIView):
 
     @extend_schema(
         tags=["Chat"],
-        summary="Update conversation settings (nickname)",
+        summary="Update conversation settings",
     )
     def patch(self, request, conversation_id):
         convo, error = get_user_conversation(conversation_id, request.user)
         if error:
             return error
 
-        nickname = str(request.data.get('nickname', '')).strip()[:64]
         pref, _ = ConversationPreference.objects.get_or_create(
             user=request.user,
             conversation=convo,
         )
-        pref.nickname = nickname
-        pref.save(update_fields=['nickname', 'updated_at'])
 
-        return Response({'nickname': pref.nickname})
+        update_fields = ['updated_at']
+        if 'nickname' in request.data:
+            pref.nickname = str(request.data.get('nickname', '')).strip()[:64]
+            update_fields.append('nickname')
+        if 'is_archived' in request.data:
+            pref.is_archived = bool(request.data.get('is_archived'))
+            update_fields.append('is_archived')
+        if 'is_muted' in request.data:
+            pref.is_muted = bool(request.data.get('is_muted'))
+            update_fields.append('is_muted')
+        if 'is_pinned' in request.data:
+            pref.is_pinned = bool(request.data.get('is_pinned'))
+            update_fields.append('is_pinned')
+
+        pref.save(update_fields=update_fields)
+
+        return Response({
+            'nickname': pref.nickname,
+            'is_archived': pref.is_archived,
+            'is_muted': pref.is_muted,
+            'is_pinned': pref.is_pinned,
+        })
 
 
 class ConversationClearHistoryView(APIView):
@@ -316,5 +487,5 @@ class WebSocketTicketView(APIView):
             return error
 
         signer = TimestampSigner(salt="duo-ws-ticket")
-        ticket = signer.sign(f"{request.user.id}:{convo.id}")
+        ticket = signer.sign(f"{request.user.id}:{convo.public_id}")
         return Response({"ticket": ticket})

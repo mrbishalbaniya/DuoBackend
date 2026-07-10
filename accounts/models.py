@@ -82,8 +82,54 @@ class Profile(models.Model):
 
     is_verified = models.BooleanField(default=False)
     is_onboarded = models.BooleanField(default=False)
+
+    LOCATION_VISIBILITY_CHOICES = [
+        ("friends", "My friends"),
+        ("friends_except", "My friends, except…"),
+        ("only_these", "Only these friends"),
+    ]
+    location_ghost_mode = models.BooleanField(
+        default=False,
+        help_text="When enabled, friends cannot see your location on the map.",
+    )
+    location_visibility = models.CharField(
+        max_length=20,
+        choices=LOCATION_VISIBILITY_CHOICES,
+        default="friends",
+    )
+    location_visibility_friends = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="User IDs for friends_except / only_these modes.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def is_location_visible_to(self, viewer) -> bool:
+        """Whether `viewer` (User or user id) may see this profile's map location."""
+        if self.location_ghost_mode:
+            return False
+        viewer_id = getattr(viewer, "id", viewer)
+        if viewer_id is None:
+            return False
+        try:
+            viewer_id = int(viewer_id)
+        except (TypeError, ValueError):
+            return False
+
+        mode = self.location_visibility or "friends"
+        selected = {
+            int(uid)
+            for uid in (self.location_visibility_friends or [])
+            if uid is not None
+        }
+
+        if mode == "friends_except":
+            return viewer_id not in selected
+        if mode == "only_these":
+            return viewer_id in selected
+        return True
 
     @property
     def profile_completeness(self):

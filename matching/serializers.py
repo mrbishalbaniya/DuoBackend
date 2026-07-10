@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Swipe, Match
-from accounts.serializers import ProfileSerializer
+from accounts.serializers import LOCATION_PRIVACY_FIELDS, ProfileSerializer
 
 
 class SwipeSerializer(serializers.Serializer):
@@ -22,7 +22,16 @@ class MatchSerializer(serializers.ModelSerializer):
     def get_other_user_profile(self, obj):
         request_user = self.context.get('request').user
         other_user = obj.get_other_user(request_user)
-        return ProfileSerializer(other_user.profile).data
+        profile = other_user.profile
+        data = ProfileSerializer(profile, context=self.context).data
+        for field in LOCATION_PRIVACY_FIELDS:
+            data.pop(field, None)
+
+        shared = profile.is_location_visible_to(request_user)
+        data["location_shared"] = shared
+        if not shared:
+            data["location"] = ""
+        return data
 
 
 class LikedProfileSerializer(serializers.Serializer):
