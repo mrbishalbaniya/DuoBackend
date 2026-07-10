@@ -1,7 +1,10 @@
+from decimal import Decimal
+
 from django.contrib import admin, messages
 
-from .models import SubscriptionPayment, SubscriptionPlan
+from .models import SubscriptionPayment, SubscriptionPlan, Wallet, WalletTopUp, WalletTransaction
 from .services import activate_payment
+from .wallet_services import credit_wallet
 
 @admin.register(SubscriptionPlan)
 class SubscriptionPlanAdmin(admin.ModelAdmin):
@@ -127,3 +130,44 @@ class SubscriptionPaymentAdmin(admin.ModelAdmin):
                 f"Premium activated until {obj.expires_at:%b %d, %Y %I:%M %p}.",
                 messages.SUCCESS,
             )
+
+
+@admin.register(Wallet)
+class WalletAdmin(admin.ModelAdmin):
+    list_display = ("user", "balance", "currency", "updated_at")
+    search_fields = ("user__username", "user__email")
+    readonly_fields = ("created_at", "updated_at")
+    actions = ("add_test_credit",)
+
+    @admin.action(description="Add NPR 500 test credit")
+    def add_test_credit(self, request, queryset):
+        for wallet in queryset:
+            credit_wallet(
+                wallet.user,
+                Decimal("500"),
+                description="Admin test credit",
+            )
+        self.message_user(request, f"Credited {queryset.count()} wallet(s).", messages.SUCCESS)
+
+
+@admin.register(WalletTransaction)
+class WalletTransactionAdmin(admin.ModelAdmin):
+    list_display = ("wallet", "type", "amount", "balance_after", "description", "created_at")
+    list_filter = ("type",)
+    search_fields = ("wallet__user__username", "description", "reference_id")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(WalletTopUp)
+class WalletTopUpAdmin(admin.ModelAdmin):
+    list_display = (
+        "transaction_uuid",
+        "user",
+        "total_amount",
+        "status",
+        "paid_at",
+        "created_at",
+    )
+    list_filter = ("status",)
+    search_fields = ("transaction_uuid", "user__username", "esewa_ref_id")
+    readonly_fields = ("created_at", "updated_at")

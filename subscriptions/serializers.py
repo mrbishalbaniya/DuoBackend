@@ -46,7 +46,31 @@ class SubscriptionPaymentSerializer(serializers.ModelSerializer):
             "transaction_uuid",
             "total_amount",
             "status",
+            "payment_source",
             "paid_at",
             "expires_at",
             "created_at",
         ]
+
+
+class WalletTransactionSerializer(serializers.Serializer):
+    type = serializers.CharField()
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    balance_after = serializers.DecimalField(max_digits=12, decimal_places=2)
+    description = serializers.CharField()
+    reference_id = serializers.CharField()
+    created_at = serializers.DateTimeField()
+
+
+class WalletSerializer(serializers.Serializer):
+    balance = serializers.IntegerField()
+    currency = serializers.CharField()
+    top_up_presets = serializers.ListField(child=serializers.IntegerField())
+    transactions = WalletTransactionSerializer(many=True)
+
+
+class WalletPurchaseResponseSerializer(serializers.Serializer):
+    is_premium = serializers.BooleanField()
+    expires_at = serializers.DateTimeField()
+    balance = serializers.IntegerField()
+    plan = SubscriptionPlanSerializer()

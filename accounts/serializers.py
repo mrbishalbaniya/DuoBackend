@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from .models import Profile
 from subscriptions.services import get_active_subscription, user_has_active_subscription
+from subscriptions.wallet_services import get_wallet_balance
 
 User = get_user_model()
 
@@ -21,6 +22,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     profile_completeness = serializers.IntegerField(read_only=True)
     is_premium = serializers.SerializerMethodField()
     subscription_expires_at = serializers.SerializerMethodField()
+    wallet_balance = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
@@ -62,6 +64,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "profile_completeness",
             "is_premium",
             "subscription_expires_at",
+            "wallet_balance",
         ]
         read_only_fields = [
             "id",
@@ -72,6 +75,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "is_verified",
             "is_premium",
             "subscription_expires_at",
+            "wallet_balance",
         ]
 
     def to_representation(self, instance):
@@ -90,6 +94,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         if not is_owner:
             for field in LOCATION_PRIVACY_FIELDS:
                 data.pop(field, None)
+            data.pop("wallet_balance", None)
         return data
 
     def get_is_premium(self, obj):
@@ -98,6 +103,9 @@ class ProfileSerializer(serializers.ModelSerializer):
     def get_subscription_expires_at(self, obj):
         active = get_active_subscription(obj.user)
         return active.expires_at if active else None
+
+    def get_wallet_balance(self, obj):
+        return int(get_wallet_balance(obj.user))
 
     def validate_location_visibility(self, value):
         allowed = {choice[0] for choice in Profile.LOCATION_VISIBILITY_CHOICES}

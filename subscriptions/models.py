@@ -56,7 +56,62 @@ class SubscriptionPlan(models.Model):
         return f"NPR {self.amount:.0f} / {self.duration_days} days"
 
 
-class SubscriptionPayment(models.Model):
+class Wallet(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="wallet",
+    )
+    balance = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0)],
+    )
+    currency = models.CharField(max_length=8, default="NPR")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Wallet"
+        verbose_name_plural = "Wallets"
+
+    def __str__(self):
+        return f"{self.user_id} · {self.currency} {self.balance:.2f}"
+
+
+class WalletTransaction(models.Model):
+    TYPE_TOP_UP = "top_up"
+    TYPE_PURCHASE = "purchase"
+    TYPE_ADJUSTMENT = "adjustment"
+
+    TYPE_CHOICES = [
+        (TYPE_TOP_UP, "Top up"),
+        (TYPE_PURCHASE, "Purchase"),
+        (TYPE_ADJUSTMENT, "Adjustment"),
+    ]
+
+    wallet = models.ForeignKey(
+        Wallet,
+        on_delete=models.CASCADE,
+        related_name="transactions",
+    )
+    type = models.CharField(max_length=16, choices=TYPE_CHOICES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    balance_after = models.DecimalField(max_digits=12, decimal_places=2)
+    description = models.CharField(max_length=255, blank=True, default="")
+    reference_id = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        sign = "+" if self.amount >= 0 else ""
+        return f"{self.wallet_id} · {sign}{self.amount} · {self.type}"
+
+
+class WalletTopUp(models.Model):
     STATUS_PENDING = "pending"
     STATUS_COMPLETE = "complete"
     STATUS_FAILED = "failed"
@@ -72,6 +127,52 @@ class SubscriptionPayment(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
+        related_name="wallet_topups",
+    )
+    transaction_uuid = models.CharField(max_length=64, unique=True, db_index=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    product_service_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    product_delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    esewa_ref_id = models.CharField(max_length=64, blank=True, default="")
+    esewa_transaction_code = models.CharField(max_length=64, blank=True, default="")
+    paid_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user_id} · {self.transaction_uuid} · {self.status}"
+
+
+class SubscriptionPayment(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_COMPLETE = "complete"
+    STATUS_FAILED = "failed"
+    STATUS_CANCELED = "canceled"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_COMPLETE, "Complete"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_CANCELED, "Canceled"),
+    ]
+
+    SOURCE_ESEWA = "esewa"
+    SOURCE_WALLET = "wallet"
+
+    SOURCE_CHOICES = [
+        (SOURCE_ESEWA, "eSewa"),
+        (SOURCE_WALLET, "Wallet"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
         related_name="subscription_payments",
     )
     plan_id = models.CharField(max_length=64, default="duo_premium_monthly")
@@ -82,6 +183,11 @@ class SubscriptionPayment(models.Model):
     product_delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    payment_source = models.CharField(
+        max_length=16,
+        choices=SOURCE_CHOICES,
+        default=SOURCE_ESEWA,
+    )
     esewa_ref_id = models.CharField(max_length=64, blank=True, default="")
     esewa_transaction_code = models.CharField(max_length=64, blank=True, default="")
     paid_at = models.DateTimeField(null=True, blank=True)

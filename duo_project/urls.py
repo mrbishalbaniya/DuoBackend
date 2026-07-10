@@ -36,6 +36,7 @@ urlpatterns = [
     path("api/matching/", include("matching.urls")),
     path("api/chat/", include("chat.urls")),
     path("api/subscriptions/", include("subscriptions.urls")),
+    path("api/wallet/", include("subscriptions.wallet_urls")),
     path("api/photos/", include("photo_verification.urls")),
     path("api/verification/", include("photo_verification.verification_urls")),
     path("api/weather/", include("weather.urls")),
