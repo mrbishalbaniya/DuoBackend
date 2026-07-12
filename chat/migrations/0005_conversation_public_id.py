@@ -9,24 +9,38 @@ def generate_public_id():
     return str(secrets.randbelow(9_000_000_000) + 1_000_000_000)
 
 
-def backfill_public_ids(apps, schema_editor):
-    Conversation = apps.get_model("chat", "Conversation")
-    used = set(
-        Conversation.objects.exclude(public_id="")
-        .exclude(public_id__isnull=True)
-        .values_list("public_id", flat=True)
-    )
-    for convo in Conversation.objects.all().iterator():
-        if convo.public_id:
+def backfill_public_ids(schema_editor):
+    """Backfill via SQL — historical ORM state lacks public_id during database_operations."""
+    connection = schema_editor.connection
+    table = "chat_conversation"
+
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT id, public_id FROM {table}")
+        rows = cursor.fetchall()
+
+    used = {public_id for _, public_id in rows if public_id}
+    updates = []
+
+    for row_id, public_id in rows:
+        if public_id:
             continue
         for _ in range(40):
             candidate = generate_public_id()
             if candidate not in used:
                 used.add(candidate)
-                Conversation.objects.filter(pk=convo.pk).update(public_id=candidate)
+                updates.append((candidate, row_id))
                 break
         else:
-            raise RuntimeError(f"Could not allocate public_id for conversation {convo.pk}")
+            raise RuntimeError(f"Could not allocate public_id for conversation {row_id}")
+
+    if not updates:
+        return
+
+    with connection.cursor() as cursor:
+        cursor.executemany(
+            f"UPDATE {table} SET public_id = %s WHERE id = %s",
+            updates,
+        )
 
 
 def _column_exists(cursor, vendor, table, column):
@@ -74,7 +88,7 @@ def apply_public_id_schema(apps, schema_editor):
                     "ADD COLUMN public_id varchar(10) NOT NULL DEFAULT ''"
                 )
 
-    backfill_public_ids(apps, schema_editor)
+    backfill_public_ids(schema_editor)
 
     with connection.cursor() as cursor:
         if vendor == "postgresql":
