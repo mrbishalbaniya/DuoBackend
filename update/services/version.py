@@ -140,9 +140,12 @@ def rollback_version(*, platform: str, channel: str = AppVersion.CHANNEL_STABLE)
 def version_payload(version: AppVersion, *, request=None) -> dict:
     apk_url = (version.apk_url or "").strip()
     if not apk_url and version.apk_file:
-        apk_url = version.apk_file.url
-        if request is not None and apk_url.startswith("/"):
-            apk_url = request.build_absolute_uri(apk_url)
+        try:
+            apk_url = version.apk_file.url
+            if request is not None and apk_url.startswith("/"):
+                apk_url = request.build_absolute_uri(apk_url)
+        except Exception:
+            apk_url = (version.apk_url or "").strip()
 
     return {
         "latest_version": version.version,
@@ -156,7 +159,7 @@ def version_payload(version: AppVersion, *, request=None) -> dict:
         "file_size": version.file_size_label,
         "file_size_bytes": version.file_size_bytes,
         "checksum_sha256": version.checksum_sha256,
-        "published_at": version.published_at.isoformat() if version.published_at else None,
+        "published_at": version.published_at,
         "channel": version.channel,
         "platform": version.platform,
         "download_count": version.download_count,

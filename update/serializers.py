@@ -5,22 +5,24 @@ from update.services.version import parse_release_notes
 
 
 class AppVersionPublicSerializer(serializers.Serializer):
+    id = serializers.IntegerField(required=False, allow_null=True)
     latest_version = serializers.CharField()
     minimum_version = serializers.CharField()
     build_number = serializers.IntegerField()
-    apk_url = serializers.URLField()
+    apk_url = serializers.URLField(allow_blank=True, required=False, default="")
     release_notes = serializers.ListField(child=serializers.CharField())
     force_update = serializers.BooleanField()
     soft_update = serializers.BooleanField()
     emergency_update = serializers.BooleanField()
     file_size = serializers.CharField()
     file_size_bytes = serializers.IntegerField()
-    checksum_sha256 = serializers.CharField()
-    published_at = serializers.DateTimeField(allow_null=True)
+    checksum_sha256 = serializers.CharField(allow_blank=True, required=False, default="")
+    published_at = serializers.DateTimeField(allow_null=True, required=False)
     channel = serializers.CharField()
     platform = serializers.CharField()
-    update_available = serializers.BooleanField(required=False)
-    download_count = serializers.IntegerField(required=False)
+    update_available = serializers.BooleanField(required=False, default=False)
+    update_blocked = serializers.BooleanField(required=False, default=False)
+    download_count = serializers.IntegerField(required=False, default=0)
 
 
 class AppVersionHistorySerializer(serializers.ModelSerializer):

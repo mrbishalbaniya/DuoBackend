@@ -1,3 +1,4 @@
+from django.db import DatabaseError
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny
@@ -28,6 +29,17 @@ class AppVersionCheckView(APIView):
     authentication_classes = []
 
     def get(self, request):
+        try:
+            return self._get(request)
+        except DatabaseError:
+            return Response(
+                {
+                    "detail": "Update service database is not ready. Run: python manage.py migrate update",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+    def _get(self, request):
         platform = (request.query_params.get("platform") or AppVersion.PLATFORM_ANDROID).strip().lower()
         channel = (request.query_params.get("channel") or AppVersion.CHANNEL_STABLE).strip().lower()
         installed_version = (request.query_params.get("installed_version") or "0.0.0").strip()
@@ -35,27 +47,29 @@ class AppVersionCheckView(APIView):
 
         latest = get_active_version(platform=platform, channel=channel)
         if latest is None:
-            return Response(
-                {
-                    "latest_version": installed_version,
-                    "minimum_version": installed_version,
-                    "build_number": installed_build,
-                    "apk_url": "",
-                    "release_notes": [],
-                    "force_update": False,
-                    "soft_update": True,
-                    "emergency_update": False,
-                    "file_size": "0 B",
-                    "file_size_bytes": 0,
-                    "checksum_sha256": "",
-                    "published_at": None,
-                    "channel": channel,
-                    "platform": platform,
-                    "update_available": False,
-                }
-            )
+            payload = {
+                "latest_version": installed_version,
+                "minimum_version": installed_version,
+                "build_number": installed_build,
+                "apk_url": "",
+                "release_notes": [],
+                "force_update": False,
+                "soft_update": True,
+                "emergency_update": False,
+                "file_size": "0 B",
+                "file_size_bytes": 0,
+                "checksum_sha256": "",
+                "published_at": None,
+                "channel": channel,
+                "platform": platform,
+                "update_available": False,
+                "update_blocked": False,
+            }
+            serializer = AppVersionPublicSerializer(instance=payload)
+            return Response(serializer.data)
 
         payload = version_payload(latest, request=request)
+        payload["id"] = latest.id
         payload["update_available"] = update_required(
             installed_version=installed_version,
             installed_build=installed_build,
@@ -66,7 +80,7 @@ class AppVersionCheckView(APIView):
             installed_build=installed_build,
             latest=latest,
         )
-        serializer = AppVersionPublicSerializer(payload)
+        serializer = AppVersionPublicSerializer(instance=payload)
         return Response(serializer.data)
 
 
@@ -76,6 +90,17 @@ class AppVersionHistoryView(APIView):
     authentication_classes = []
 
     def get(self, request):
+        try:
+            return self._get(request)
+        except DatabaseError:
+            return Response(
+                {
+                    "detail": "Update service database is not ready. Run: python manage.py migrate update",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+    def _get(self, request):
         platform = (request.query_params.get("platform") or AppVersion.PLATFORM_ANDROID).strip().lower()
         channel = (request.query_params.get("channel") or AppVersion.CHANNEL_STABLE).strip().lower()
         queryset = AppVersion.objects.filter(
