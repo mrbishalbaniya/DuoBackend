@@ -3,6 +3,7 @@
 
 {% block extrastyle %}
 {{ block.super }}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 <link rel="stylesheet" href="{% static 'analytics/css/dashboard.css' %}">
 {% endblock %}
 
@@ -24,109 +25,152 @@
       <p class="analytics-subtitle">Real-time insights across revenue, users, engagement, and platform health.</p>
     </div>
     <div class="analytics-header-actions">
+      <select id="period-filter" class="analytics-select" aria-label="{% trans 'Period' %}">
+        <option value="7d">7 days</option>
+        <option value="30d" selected>30 days</option>
+        <option value="90d">90 days</option>
+      </select>
       <button type="button" class="analytics-btn analytics-btn-outline" id="theme-toggle">Light mode</button>
       <a href="/api/analytics/exports/?type=executive&format=pdf" class="analytics-btn analytics-btn-primary" target="_blank">Export PDF</a>
     </div>
   </header>
 
-  <section class="analytics-kpi-grid" id="kpi-grid">
-    <article class="analytics-kpi-card featured">
-      <span class="kpi-label">Today's Revenue</span>
-      <strong class="kpi-value" data-kpi="revenue.today">{{ dashboard_data.revenue.today }}</strong>
-      <span class="kpi-delta positive">{{ dashboard_data.revenue.today_change_pct }}% vs yesterday</span>
-    </article>
-    <article class="analytics-kpi-card">
-      <span class="kpi-label">MRR</span>
-      <strong class="kpi-value">{{ dashboard_data.revenue.mrr }}</strong>
-    </article>
-    <article class="analytics-kpi-card">
-      <span class="kpi-label">ARR</span>
-      <strong class="kpi-value">{{ dashboard_data.revenue.arr }}</strong>
-    </article>
-    <article class="analytics-kpi-card">
-      <span class="kpi-label">Total Users</span>
-      <strong class="kpi-value">{{ dashboard_data.users.total }}</strong>
-    </article>
-    <article class="analytics-kpi-card">
-      <span class="kpi-label">Online Now</span>
-      <strong class="kpi-value live-pulse" data-kpi="users.online">{{ dashboard_data.users.online }}</strong>
-    </article>
-    <article class="analytics-kpi-card">
-      <span class="kpi-label">DAU / WAU / MAU</span>
-      <strong class="kpi-value">{{ dashboard_data.users.dau }} / {{ dashboard_data.users.wau }} / {{ dashboard_data.users.mau }}</strong>
-    </article>
-    <article class="analytics-kpi-card">
-      <span class="kpi-label">Premium Users</span>
-      <strong class="kpi-value">{{ dashboard_data.users.premium }}</strong>
-    </article>
-    <article class="analytics-kpi-card">
-      <span class="kpi-label">Retention Rate</span>
-      <strong class="kpi-value">{{ dashboard_data.users.retention_rate }}%</strong>
-    </article>
-    <article class="analytics-kpi-card">
-      <span class="kpi-label">Churn Rate</span>
-      <strong class="kpi-value">{{ dashboard_data.users.churn_rate }}%</strong>
-    </article>
-    <article class="analytics-kpi-card">
-      <span class="kpi-label">LTV / ARPU</span>
-      <strong class="kpi-value">{{ dashboard_data.users.ltv }} / {{ dashboard_data.users.arpu }}</strong>
-    </article>
-    <article class="analytics-kpi-card">
-      <span class="kpi-label">Total Matches</span>
-      <strong class="kpi-value">{{ dashboard_data.engagement.total_matches }}</strong>
-    </article>
-    <article class="analytics-kpi-card">
-      <span class="kpi-label">Total Messages</span>
-      <strong class="kpi-value">{{ dashboard_data.engagement.total_messages }}</strong>
-    </article>
+  <nav class="analytics-module-tabs" id="module-tabs" role="tablist">
+    <button type="button" class="module-tab is-active" data-module="overview" role="tab">Overview</button>
+    <button type="button" class="module-tab" data-module="revenue" role="tab">Revenue</button>
+    <button type="button" class="module-tab" data-module="users" role="tab">Users</button>
+    <button type="button" class="module-tab" data-module="matching" role="tab">Match</button>
+    <button type="button" class="module-tab" data-module="chat" role="tab">Chat</button>
+    <button type="button" class="module-tab" data-module="funnel" role="tab">Funnel</button>
+    <button type="button" class="module-tab" data-module="retention" role="tab">Retention</button>
+    <button type="button" class="module-tab" data-module="forecast" role="tab">AI Forecast</button>
+    <button type="button" class="module-tab" data-module="security" role="tab">Security</button>
+    <button type="button" class="module-tab" data-module="maps" role="tab">Map</button>
+    <button type="button" class="module-tab" data-module="system" role="tab">System</button>
+  </nav>
+
+  <section id="section-overview" class="analytics-section is-active" data-module="overview">
+    <div class="analytics-kpi-grid" id="kpi-grid">
+      <article class="analytics-kpi-card featured">
+        <span class="kpi-label">Today's Revenue</span>
+        <strong class="kpi-value" data-kpi="revenue.today">{{ dashboard_data.revenue.today }}</strong>
+        <span class="kpi-delta positive">{{ dashboard_data.revenue.today_change_pct }}% vs yesterday</span>
+      </article>
+      <article class="analytics-kpi-card"><span class="kpi-label">MRR</span><strong class="kpi-value">{{ dashboard_data.revenue.mrr }}</strong></article>
+      <article class="analytics-kpi-card"><span class="kpi-label">ARR</span><strong class="kpi-value">{{ dashboard_data.revenue.arr }}</strong></article>
+      <article class="analytics-kpi-card"><span class="kpi-label">Total Users</span><strong class="kpi-value">{{ dashboard_data.users.total }}</strong></article>
+      <article class="analytics-kpi-card"><span class="kpi-label">Online Now</span><strong class="kpi-value live-pulse" data-kpi="users.online">{{ dashboard_data.users.online }}</strong></article>
+      <article class="analytics-kpi-card"><span class="kpi-label">DAU / WAU / MAU</span><strong class="kpi-value">{{ dashboard_data.users.dau }} / {{ dashboard_data.users.wau }} / {{ dashboard_data.users.mau }}</strong></article>
+      <article class="analytics-kpi-card"><span class="kpi-label">Premium Users</span><strong class="kpi-value">{{ dashboard_data.users.premium }}</strong></article>
+      <article class="analytics-kpi-card"><span class="kpi-label">Retention Rate</span><strong class="kpi-value">{{ dashboard_data.users.retention_rate }}%</strong></article>
+      <article class="analytics-kpi-card"><span class="kpi-label">Churn Rate</span><strong class="kpi-value">{{ dashboard_data.users.churn_rate }}%</strong></article>
+      <article class="analytics-kpi-card"><span class="kpi-label">LTV / ARPU</span><strong class="kpi-value">{{ dashboard_data.users.ltv }} / {{ dashboard_data.users.arpu }}</strong></article>
+      <article class="analytics-kpi-card"><span class="kpi-label">Total Matches</span><strong class="kpi-value">{{ dashboard_data.engagement.total_matches }}</strong></article>
+      <article class="analytics-kpi-card"><span class="kpi-label">Total Messages</span><strong class="kpi-value">{{ dashboard_data.engagement.total_messages }}</strong></article>
+    </div>
+    <div class="analytics-charts-grid">
+      <article class="analytics-panel"><div class="panel-header"><h2>Revenue Trend</h2><span class="panel-badge">30 days</span></div><canvas id="revenue-chart" height="120"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>User Activity</h2><span class="panel-badge live">Live</span></div><canvas id="activity-chart" height="120"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Engagement Funnel</h2></div><canvas id="funnel-chart" height="120"></canvas></article>
+      <article class="analytics-panel">
+        <div class="panel-header"><h2>System Health</h2><span class="panel-badge status-{{ dashboard_data.system.status }}">{{ dashboard_data.system.status }}</span></div>
+        <ul class="system-metrics">
+          <li><span>API Response</span><strong>{{ dashboard_data.system.api_response_ms }} ms</strong></li>
+          <li><span>Database</span><strong>{% if dashboard_data.system.database %}Healthy{% else %}Down{% endif %}</strong></li>
+          <li><span>Verification Queue</span><strong>{{ dashboard_data.operations.verification_queue }}</strong></li>
+          <li><span>Failed Payments</span><strong>{{ dashboard_data.revenue.failed_payments }}</strong></li>
+        </ul>
+      </article>
+    </div>
   </section>
 
-  <section class="analytics-charts-grid">
-    <article class="analytics-panel">
-      <div class="panel-header">
-        <h2>Revenue Trend</h2>
-        <span class="panel-badge">30 days</span>
-      </div>
-      <canvas id="revenue-chart" height="120"></canvas>
-    </article>
-    <article class="analytics-panel">
-      <div class="panel-header">
-        <h2>User Activity</h2>
-        <span class="panel-badge live">Live</span>
-      </div>
-      <canvas id="activity-chart" height="120"></canvas>
-    </article>
-    <article class="analytics-panel">
-      <div class="panel-header">
-        <h2>Engagement Funnel</h2>
-      </div>
-      <canvas id="funnel-chart" height="120"></canvas>
-    </article>
-    <article class="analytics-panel">
-      <div class="panel-header">
-        <h2>System Health</h2>
-        <span class="panel-badge status-{{ dashboard_data.system.status }}">{{ dashboard_data.system.status }}</span>
-      </div>
-      <ul class="system-metrics">
-        <li><span>API Response</span><strong>{{ dashboard_data.system.api_response_ms }} ms</strong></li>
-        <li><span>Database</span><strong>{% if dashboard_data.system.database %}Healthy{% else %}Down{% endif %}</strong></li>
-        <li><span>Verification Queue</span><strong>{{ dashboard_data.operations.verification_queue }}</strong></li>
-        <li><span>Failed Payments</span><strong>{{ dashboard_data.revenue.failed_payments }}</strong></li>
-      </ul>
-    </article>
+  <section id="section-revenue" class="analytics-section" data-module="revenue" hidden>
+    <div class="section-kpis" id="revenue-kpis"></div>
+    <div class="analytics-charts-grid">
+      <article class="analytics-panel"><div class="panel-header"><h2>Revenue Timeseries</h2></div><canvas id="revenue-module-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Revenue Forecast</h2></div><canvas id="revenue-forecast-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Revenue by Plan</h2></div><canvas id="revenue-plan-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Plan Breakdown</h2></div><div class="analytics-table-wrap" id="revenue-plan-table"></div></article>
+    </div>
   </section>
 
-  <section class="analytics-modules">
-    <a href="/api/analytics/revenue/" class="module-card" target="_blank">Revenue Analytics</a>
-    <a href="/api/analytics/users/" class="module-card" target="_blank">User Analytics</a>
-    <a href="/api/analytics/matching/" class="module-card" target="_blank">Match Analytics</a>
-    <a href="/api/analytics/chat/" class="module-card" target="_blank">Chat Analytics</a>
-    <a href="/api/analytics/funnel/" class="module-card" target="_blank">Funnel</a>
-    <a href="/api/analytics/retention/" class="module-card" target="_blank">Retention</a>
-    <a href="/api/analytics/forecast/" class="module-card" target="_blank">AI Forecast</a>
-    <a href="/api/analytics/security/" class="module-card" target="_blank">Security</a>
-    <a href="/api/analytics/maps/" class="module-card" target="_blank">Map Analytics</a>
-    <a href="/api/analytics/system/" class="module-card" target="_blank">System</a>
+  <section id="section-users" class="analytics-section" data-module="users" hidden>
+    <div class="section-kpis" id="users-kpis"></div>
+    <div class="analytics-charts-grid">
+      <article class="analytics-panel"><div class="panel-header"><h2>Registration Growth</h2></div><canvas id="users-growth-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Gender Distribution</h2></div><canvas id="users-gender-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Age Buckets</h2></div><canvas id="users-age-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Platform Distribution</h2></div><canvas id="users-platform-chart" height="140"></canvas></article>
+    </div>
+  </section>
+
+  <section id="section-matching" class="analytics-section" data-module="matching" hidden>
+    <div class="section-kpis" id="matching-kpis"></div>
+    <div class="analytics-charts-grid">
+      <article class="analytics-panel"><div class="panel-header"><h2>Swipe Breakdown</h2></div><canvas id="matching-swipes-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Daily Matches</h2></div><canvas id="matching-daily-chart" height="140"></canvas></article>
+      <article class="analytics-panel analytics-panel--wide"><div class="panel-header"><h2>Match Metrics</h2></div><div class="analytics-table-wrap" id="matching-metrics-table"></div></article>
+    </div>
+  </section>
+
+  <section id="section-chat" class="analytics-section" data-module="chat" hidden>
+    <div class="section-kpis" id="chat-kpis"></div>
+    <div class="analytics-charts-grid">
+      <article class="analytics-panel"><div class="panel-header"><h2>Message Timeline</h2></div><canvas id="chat-timeline-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Message Types</h2></div><canvas id="chat-types-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Delivery & Read Rates</h2></div><canvas id="chat-rates-chart" height="140"></canvas></article>
+    </div>
+  </section>
+
+  <section id="section-funnel" class="analytics-section" data-module="funnel" hidden>
+    <div class="section-kpis" id="funnel-kpis"></div>
+    <div class="analytics-charts-grid">
+      <article class="analytics-panel analytics-panel--wide"><div class="panel-header"><h2>Conversion Funnel</h2></div><canvas id="funnel-module-chart" height="180"></canvas></article>
+      <article class="analytics-panel analytics-panel--wide"><div class="panel-header"><h2>Stage Details</h2></div><div class="analytics-table-wrap" id="funnel-stages-table"></div></article>
+    </div>
+  </section>
+
+  <section id="section-retention" class="analytics-section" data-module="retention" hidden>
+    <div class="section-kpis" id="retention-kpis"></div>
+    <div class="analytics-charts-grid">
+      <article class="analytics-panel analytics-panel--full"><div class="panel-header"><h2>Cohort Retention Matrix</h2></div><div class="cohort-matrix-wrap" id="retention-cohort-matrix"></div></article>
+    </div>
+  </section>
+
+  <section id="section-forecast" class="analytics-section" data-module="forecast" hidden>
+    <div class="section-kpis" id="forecast-kpis"></div>
+    <div class="analytics-charts-grid">
+      <article class="analytics-panel"><div class="panel-header"><h2>Revenue Forecast</h2></div><canvas id="forecast-revenue-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Trending Features</h2></div><canvas id="forecast-trending-chart" height="140"></canvas></article>
+      <article class="analytics-panel analytics-panel--wide"><div class="panel-header"><h2>AI Predictions</h2><span class="panel-badge" id="forecast-model-version">heuristic</span></div><div class="analytics-table-wrap" id="forecast-predictions-table"></div></article>
+    </div>
+  </section>
+
+  <section id="section-security" class="analytics-section" data-module="security" hidden>
+    <div class="section-kpis" id="security-kpis"></div>
+    <div class="analytics-charts-grid">
+      <article class="analytics-panel"><div class="panel-header"><h2>Security Events</h2></div><canvas id="security-events-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Fraud Signals</h2></div><canvas id="security-fraud-chart" height="140"></canvas></article>
+      <article class="analytics-panel analytics-panel--wide"><div class="panel-header"><h2>Threat Summary</h2></div><div class="analytics-table-wrap" id="security-summary-table"></div></article>
+    </div>
+  </section>
+
+  <section id="section-maps" class="analytics-section" data-module="maps" hidden>
+    <div class="section-kpis" id="maps-kpis"></div>
+    <div class="analytics-charts-grid analytics-charts-grid--map">
+      <article class="analytics-panel analytics-panel--full"><div class="panel-header"><h2>Activity Heatmap</h2></div><div id="analytics-map" class="analytics-map"></div></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Top Countries</h2></div><canvas id="maps-country-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Top Cities</h2></div><div class="analytics-table-wrap" id="maps-locations-table"></div></article>
+    </div>
+  </section>
+
+  <section id="section-system" class="analytics-section" data-module="system" hidden>
+    <div class="section-kpis" id="system-kpis"></div>
+    <div class="analytics-charts-grid">
+      <article class="analytics-panel"><div class="panel-header"><h2>Resource Usage</h2></div><canvas id="system-resources-chart" height="140"></canvas></article>
+      <article class="analytics-panel"><div class="panel-header"><h2>Service Health</h2></div><canvas id="system-health-chart" height="140"></canvas></article>
+      <article class="analytics-panel analytics-panel--wide"><div class="panel-header"><h2>Infrastructure Status</h2></div><div class="analytics-table-wrap" id="system-status-table"></div></article>
+    </div>
   </section>
 </div>
 {% endblock %}
@@ -134,5 +178,7 @@
 {% block extrajs %}
 {{ block.super }}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="{% static 'analytics/js/dashboard.js' %}"></script>
+<script src="{% static 'analytics/js/dashboard-modules.js' %}"></script>
 {% endblock %}

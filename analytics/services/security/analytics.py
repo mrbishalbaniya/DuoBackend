@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from analytics.services.base import DateRange
 from chat.models import UserReport
+from matching.models import Swipe
 from security.models import LoginHistory, SecurityEvent, UserDevice
 
 User = get_user_model()
@@ -53,7 +54,13 @@ def get_fraud_signals(filters: dict | None = None) -> dict:
     date_range = DateRange.from_request(filters)
     start, end = date_range.as_datetimes()
 
-    rapid_swipes = 0
+    rapid_swipes = (
+        Swipe.objects.filter(created_at__gte=start, created_at__lte=end)
+        .values("from_user_id")
+        .annotate(swipe_count=Count("id"))
+        .filter(swipe_count__gte=80)
+        .count()
+    )
     fake_profiles = UserReport.objects.filter(
         created_at__gte=start, created_at__lte=end, reason__icontains="fake"
     ).count()

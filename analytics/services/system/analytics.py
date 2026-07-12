@@ -35,11 +35,7 @@ def get_system_analytics() -> dict:
             "configured": bool(getattr(settings, "CHANNEL_LAYERS", {}).get("default", {}).get("CONFIG", {}).get("hosts")),
             "healthy": redis_ok,
         },
-        "resources": {
-            "cpu_pct": 0,
-            "memory_pct": 0,
-            "storage_usage_pct": 0,
-        },
+        "resources": _resource_metrics(),
         "background_jobs": {
             "celery": False,
             "queues": [],
@@ -67,6 +63,21 @@ def _check_cache() -> bool:
         return cache.get("analytics_health") == "ok"
     except Exception:
         return False
+
+
+def _resource_metrics() -> dict:
+    try:
+        import psutil
+
+        root = os.environ.get("SYSTEM_DRIVE", "C:\\") if os.name == "nt" else "/"
+        disk = psutil.disk_usage(root)
+        return {
+            "cpu_pct": round(psutil.cpu_percent(interval=0.1), 1),
+            "memory_pct": round(psutil.virtual_memory().percent, 1),
+            "storage_usage_pct": round(disk.percent, 1),
+        }
+    except Exception:
+        return {"cpu_pct": 0, "memory_pct": 0, "storage_usage_pct": 0}
 
 
 def _check_redis() -> bool:

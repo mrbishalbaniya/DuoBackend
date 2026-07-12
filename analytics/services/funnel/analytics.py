@@ -26,7 +26,7 @@ def get_funnel_analytics(filters: dict | None = None) -> dict:
 
     registered = total
     verified = users.filter(
-        Exists(UserVerification.objects.filter(user_id=OuterRef("pk"), verification_status="verified"))
+        Exists(UserVerification.objects.filter(user_id=OuterRef("pk"), verification_status="VERIFIED"))
     ).count()
     profile_complete = users.filter(
         Exists(Profile.objects.filter(user_id=OuterRef("pk"), is_onboarded=True))
@@ -37,9 +37,16 @@ def get_funnel_analytics(filters: dict | None = None) -> dict:
     ).count()
     first_chat = users.filter(Exists(Message.objects.filter(sender_id=OuterRef("pk")))).count()
     premium = users.filter(
-        Exists(SubscriptionPayment.objects.filter(user_id=OuterRef("pk"), status="complete"))
+        Exists(SubscriptionPayment.objects.filter(user_id=OuterRef("pk"), status=SubscriptionPayment.STATUS_COMPLETE))
     ).count()
-    renewal = 0
+    renewal_user_ids = (
+        SubscriptionPayment.objects.filter(status=SubscriptionPayment.STATUS_COMPLETE)
+        .values("user_id")
+        .annotate(payment_count=Count("id"))
+        .filter(payment_count__gte=2)
+        .values_list("user_id", flat=True)
+    )
+    renewal = users.filter(id__in=renewal_user_ids).count()
 
     stages = [
         {"stage": "visitor", "count": registered, "rate": 100.0, "drop_off": 0.0},
