@@ -66,6 +66,11 @@ class AppVersion(models.Model):
     def __str__(self) -> str:
         return f"{self.platform} {self.version}+{self.build_number} ({self.channel})"
 
+    def normalized_release_notes(self) -> list[str]:
+        from update.services.version import parse_release_notes
+
+        return parse_release_notes(self.release_notes)
+
     @property
     def file_size_label(self) -> str:
         if self.file_size_bytes <= 0:

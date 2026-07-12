@@ -44,6 +44,7 @@ urlpatterns = [
     path("api/activity/", include("activity.urls")),
     path("api/avatars/", include("avatars.urls")),
     path("api/app/", include("update.urls")),
+    path("api/security/", include("security.urls")),
 ]
 
 if settings.DEBUG:

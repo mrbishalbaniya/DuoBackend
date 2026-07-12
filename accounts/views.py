@@ -363,6 +363,13 @@ class PasswordChangeView(APIView):
         user.set_password(new_password)
         user.save(update_fields=["password"])
 
+        try:
+            from security.services import security_service
+
+            security_service.on_password_changed(user, request)
+        except Exception:
+            pass
+
         return Response(
             {"changed": True, "message": "Password updated successfully."},
             status=status.HTTP_200_OK,

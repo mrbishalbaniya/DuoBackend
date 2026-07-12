@@ -1,3 +1,5 @@
+import logging
+
 from django.db import DatabaseError
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
@@ -12,6 +14,7 @@ from update.serializers import (
     AppVersionPublicSerializer,
     AppVersionPublishSerializer,
 )
+from update.services.bootstrap import ensure_update_database, update_table_exists
 from update.services.storage import save_apk_file
 from update.services.version import (
     compute_sha256,
@@ -22,6 +25,35 @@ from update.services.version import (
     version_payload,
 )
 
+logger = logging.getLogger("update")
+
+UPDATE_DB_NOT_READY_DETAIL = (
+    "Update service is temporarily unavailable. Please try again later."
+)
+UPDATE_DB_NOT_READY_ADMIN = "Run: python manage.py migrate update && python manage.py ensure_update_service"
+
+
+def _database_not_ready_response(*, view_name: str):
+    logger.error(
+        "%s blocked: update_appversion table missing (table_exists=%s)",
+        view_name,
+        update_table_exists(),
+    )
+    return Response(
+        {
+            "detail": UPDATE_DB_NOT_READY_DETAIL,
+            "code": "update_db_not_ready",
+            "admin_hint": UPDATE_DB_NOT_READY_ADMIN,
+        },
+        status=status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+
+
+def _guard_update_database(view_name: str):
+    if ensure_update_database(apply_migrations=False):
+        return None
+    return _database_not_ready_response(view_name=view_name)
+
 
 @extend_schema(tags=["App Updates"])
 class AppVersionCheckView(APIView):
@@ -29,15 +61,15 @@ class AppVersionCheckView(APIView):
     authentication_classes = []
 
     def get(self, request):
+        blocked = _guard_update_database("AppVersionCheckView")
+        if blocked is not None:
+            return blocked
+
         try:
             return self._get(request)
         except DatabaseError:
-            return Response(
-                {
-                    "detail": "Update service database is not ready. Run: python manage.py migrate update",
-                },
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            logger.exception("DatabaseError in AppVersionCheckView")
+            return _database_not_ready_response(view_name="AppVersionCheckView")
 
     def _get(self, request):
         platform = (request.query_params.get("platform") or AppVersion.PLATFORM_ANDROID).strip().lower()
@@ -45,8 +77,17 @@ class AppVersionCheckView(APIView):
         installed_version = (request.query_params.get("installed_version") or "0.0.0").strip()
         installed_build = int(request.query_params.get("build_number") or 0)
 
+        logger.info(
+            "version check platform=%s channel=%s installed=%s+%s",
+            platform,
+            channel,
+            installed_version,
+            installed_build,
+        )
+
         latest = get_active_version(platform=platform, channel=channel)
         if latest is None:
+            logger.info("No active AppVersion for platform=%s channel=%s — returning up-to-date payload", platform, channel)
             payload = {
                 "latest_version": installed_version,
                 "minimum_version": installed_version,
@@ -90,15 +131,15 @@ class AppVersionHistoryView(APIView):
     authentication_classes = []
 
     def get(self, request):
+        blocked = _guard_update_database("AppVersionHistoryView")
+        if blocked is not None:
+            return blocked
+
         try:
             return self._get(request)
         except DatabaseError:
-            return Response(
-                {
-                    "detail": "Update service database is not ready. Run: python manage.py migrate update",
-                },
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            logger.exception("DatabaseError in AppVersionHistoryView")
+            return _database_not_ready_response(view_name="AppVersionHistoryView")
 
     def _get(self, request):
         platform = (request.query_params.get("platform") or AppVersion.PLATFORM_ANDROID).strip().lower()
@@ -118,6 +159,17 @@ class AppVersionDownloadTrackView(APIView):
     authentication_classes = []
 
     def post(self, request):
+        blocked = _guard_update_database("AppVersionDownloadTrackView")
+        if blocked is not None:
+            return blocked
+
+        try:
+            return self._post(request)
+        except DatabaseError:
+            logger.exception("DatabaseError in AppVersionDownloadTrackView")
+            return _database_not_ready_response(view_name="AppVersionDownloadTrackView")
+
+    def _post(self, request):
         version_id = request.data.get("version_id")
         if not version_id:
             return Response({"error": "version_id is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -136,6 +188,17 @@ class AppVersionPublishView(APIView):
     authentication_classes = []
 
     def post(self, request):
+        blocked = _guard_update_database("AppVersionPublishView")
+        if blocked is not None:
+            return blocked
+
+        try:
+            return self._post(request)
+        except DatabaseError:
+            logger.exception("DatabaseError in AppVersionPublishView")
+            return _database_not_ready_response(view_name="AppVersionPublishView")
+
+    def _post(self, request):
         serializer = AppVersionPublishSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -186,4 +249,5 @@ class AppVersionPublishView(APIView):
 
         payload = version_payload(version, request=request)
         payload["id"] = version.id
+        logger.info("Published AppVersion id=%s %s+%s", version.id, version.version, version.build_number)
         return Response(payload, status=status.HTTP_201_CREATED)

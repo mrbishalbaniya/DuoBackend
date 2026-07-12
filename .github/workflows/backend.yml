@@ -58,6 +58,9 @@ jobs:
       - name: Apply migrations
         run: python manage.py migrate --noinput
 
+      - name: Ensure update service
+        run: python manage.py ensure_update_service
+
       - name: Run tests
         env:
           DEBUG: "True"

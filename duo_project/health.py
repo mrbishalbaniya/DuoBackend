@@ -4,6 +4,15 @@ from django.urls import NoReverseMatch, reverse
 import os
 
 
+def _update_service_ready() -> bool:
+    try:
+        from update.services.bootstrap import update_table_exists
+
+        return update_table_exists()
+    except Exception:
+        return False
+
+
 def health_check(_request):
     """Public health endpoint for load balancers and Render."""
     db_ok = True
@@ -21,6 +30,8 @@ def health_check(_request):
     except NoReverseMatch:
         wallet_routes = False
 
+    update_ready = _update_service_ready() if db_ok else False
+
     status_code = 200 if db_ok else 503
     commit = os.environ.get("RENDER_GIT_COMMIT", "")
     return JsonResponse(
@@ -28,8 +39,12 @@ def health_check(_request):
             "status": "ok" if db_ok else "degraded",
             "database": db_ok,
             "api_version": commit[:8] if commit else "local",
-            "features": {"wallet": wallet_routes},
+            "features": {
+                "wallet": wallet_routes,
+                "update_service": update_ready,
+            },
             "wallet_routes": wallet_routes,
+            "update_service_ready": update_ready,
         },
         status=status_code,
     )

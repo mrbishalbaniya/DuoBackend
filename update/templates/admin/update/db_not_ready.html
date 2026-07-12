@@ -1,0 +1,28 @@
+{% extends "admin/base_site.html" %}
+
+{% block title %}App versions unavailable{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; App versions unavailable
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="messagelist">
+  <div class="error">
+    The update service database is not ready. The <code>update_appversion</code> table is missing
+    or migrations have not been applied.
+  </div>
+</div>
+
+<p>On the server, run:</p>
+<pre><code>python manage.py migrate --noinput
+python manage.py ensure_update_service</code></pre>
+
+<p>Render deployments should apply this automatically on startup. If you still see this page,
+redeploy the backend or run the commands above against the production database.</p>
+
+<p><a class="button" href="{% url 'admin:index' %}">Back to admin home</a></p>
+{% endblock %}

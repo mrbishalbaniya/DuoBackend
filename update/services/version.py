@@ -9,6 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from update.models import AppVersion
+from update.services.admin_helpers import resolve_apk_url
 
 
 def parse_release_notes(raw) -> list[str]:
@@ -138,14 +139,9 @@ def rollback_version(*, platform: str, channel: str = AppVersion.CHANNEL_STABLE)
 
 
 def version_payload(version: AppVersion, *, request=None) -> dict:
-    apk_url = (version.apk_url or "").strip()
-    if not apk_url and version.apk_file:
-        try:
-            apk_url = version.apk_file.url
-            if request is not None and apk_url.startswith("/"):
-                apk_url = request.build_absolute_uri(apk_url)
-        except Exception:
-            apk_url = (version.apk_url or "").strip()
+    apk_url = resolve_apk_url(version)
+    if request is not None and apk_url.startswith("/"):
+        apk_url = request.build_absolute_uri(apk_url)
 
     return {
         "latest_version": version.version,

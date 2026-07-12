@@ -39,6 +39,7 @@ jobs:
         run: |
           python manage.py check --deploy
           python manage.py migrate --noinput
+          python manage.py ensure_update_service
           python manage.py test --verbosity=1
 
       - name: Generate changelog

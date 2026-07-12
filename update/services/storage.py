@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 from typing import BinaryIO
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+
+logger = logging.getLogger("update")
 
 
 def build_apk_filename(version: str, build_number: int) -> str:
@@ -17,8 +20,17 @@ def build_apk_filename(version: str, build_number: int) -> str:
 def save_apk_file(*, version: str, build_number: int, uploaded_file) -> tuple[str, str]:
     """Persist APK and return (relative_path, public_url)."""
     filename = build_apk_filename(version, build_number)
-    saved_name = default_storage.save(f"apk/{filename}", uploaded_file)
-    return saved_name, default_storage.url(saved_name)
+    try:
+        saved_name = default_storage.save(f"apk/{filename}", uploaded_file)
+        return saved_name, default_storage.url(saved_name)
+    except Exception:
+        logger.exception(
+            "Failed to save APK for version=%s build=%s backend=%s",
+            version,
+            build_number,
+            type(default_storage).__name__,
+        )
+        raise
 
 
 def save_apk_bytes(*, version: str, build_number: int, data: bytes) -> tuple[str, str]:

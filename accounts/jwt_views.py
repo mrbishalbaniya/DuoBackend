@@ -2,23 +2,45 @@ import secrets
 
 from django.core.cache import cache
 from rest_framework import permissions, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .auth_cookies import clear_auth_cookies, set_auth_cookies
+from .security_serializers import DuoTokenObtainPairSerializer
 from .throttling import AuthRateThrottle
 
 
 class CookieTokenObtainPairView(TokenObtainPairView):
     throttle_classes = [AuthRateThrottle]
+    serializer_class = DuoTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        if response.status_code == 200:
-            data = response.data
-            set_auth_cookies(response, data["access"], data["refresh"])
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as exc:
+            detail = exc.detail
+            if isinstance(detail, dict) and detail.get("requires_2fa"):
+                challenge = detail.get("challenge_token", [None])[0]
+                methods = detail.get("methods", [[]])[0]
+                if isinstance(methods, str):
+                    methods = [methods]
+                return Response(
+                    {
+                        "requires_2fa": True,
+                        "challenge_token": challenge,
+                        "methods": methods or [],
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            raise
+
+        data = serializer.validated_data
+        response = Response(data, status=status.HTTP_200_OK)
+        set_auth_cookies(response, data["access"], data["refresh"])
         return response
 
 
@@ -30,16 +52,43 @@ class CookieTokenRefreshView(TokenRefreshView):
         if not refresh:
             return Response({"detail": "Refresh token required."}, status=status.HTTP_401_UNAUTHORIZED)
 
+        try:
+            from security.services import security_service
+
+            jti = str(RefreshToken(refresh)["jti"])
+            if not security_service.is_session_active(jti):
+                return Response({"detail": "Session revoked."}, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception:
+            pass
+
         serializer = self.get_serializer(data={"refresh": refresh})
         serializer.is_valid(raise_exception=True)
         access = serializer.validated_data["access"]
         response = Response({"access": access}, status=status.HTTP_200_OK)
         set_auth_cookies(response, access, refresh)
+        try:
+            from security.services import security_service
+
+            security_service.touch_session(jti)
+        except Exception:
+            pass
         return response
 
 
 class LogoutView(APIView):
     def post(self, request):
+        refresh = request.data.get("refresh") or request.COOKIES.get("duo_refresh")
+        if refresh:
+            try:
+                from security.services import security_service
+                from security.models import UserSession
+
+                jti = str(RefreshToken(refresh)["jti"])
+                session = UserSession.objects.filter(refresh_jti=jti, user=request.user).first()
+                if session:
+                    session.revoke()
+            except Exception:
+                pass
         response = Response({"detail": "Logged out."}, status=status.HTTP_200_OK)
         clear_auth_cookies(response)
         return response

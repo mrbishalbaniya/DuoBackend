@@ -105,6 +105,7 @@ INSTALLED_APPS = [
     "activity",
     "avatars",
     "update",
+    "security",
 ]
 
 MIDDLEWARE = [
@@ -505,6 +506,11 @@ LOGGING = {
             "level": "WARNING",
             "propagate": False,
         },
+        "update": {
+            "handlers": ["console"],
+            "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
     },
 }
 
@@ -570,11 +576,13 @@ JAZZMIN_SETTINGS = {
         "email_service.EmailLog": "fas fa-paper-plane",
         "email_service.EmailTemplate": "fas fa-file-alt",
         "email_service.EmailEventSetting": "fas fa-toggle-on",
+        "update.AppVersion": "fas fa-mobile-alt",
     },
     "order_with_respect_to": [
         "site_config",
         "email_service",
         "accounts",
+        "update",
         "matching",
         "chat",
         "subscriptions",

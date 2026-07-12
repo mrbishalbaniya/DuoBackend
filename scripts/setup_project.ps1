@@ -75,6 +75,7 @@ Write-Host ""
 Write-Host "Step 5: Running Django Migrations..." -ForegroundColor Green
 python manage.py makemigrations
 python manage.py migrate
+python manage.py ensure_update_service
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "  ✓ Migrations completed" -ForegroundColor Green
