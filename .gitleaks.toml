@@ -1,0 +1,8 @@
+title = "Duo Backend gitleaks"
+
+[allowlist]
+description = "Template env files contain placeholder values, not production secrets"
+paths = [
+  '''(?:^|/)\.env\.example$''',
+  '''(?:^|/)\.env\.sample$''',
+]
