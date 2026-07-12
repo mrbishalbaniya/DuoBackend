@@ -6,7 +6,20 @@ from django.contrib.auth.models import User
 from django.db.models import Max
 from django.utils import timezone
 
-from .models import Conversation, Message, MessageReaction, UserBlock
+from .models import Conversation, ConversationPreference, Message, MessageReaction, UserBlock
+
+
+SECURITY_EVENT_SCREENSHOT = "SCREENSHOT_TAKEN"
+SECURITY_EVENT_RECORDING_STARTED = "SCREEN_RECORDING_STARTED"
+SECURITY_EVENT_RECORDING_STOPPED = "SCREEN_RECORDING_STOPPED"
+
+SECURITY_EVENT_CODES = frozenset({
+    SECURITY_EVENT_SCREENSHOT,
+    SECURITY_EVENT_RECORDING_STARTED,
+    SECURITY_EVENT_RECORDING_STOPPED,
+})
+
+_SECURITY_EVENT_DEBOUNCE_SECONDS = 2
 
 
 def users_are_blocked(user_a: User, user_b: User) -> bool:
@@ -108,3 +121,73 @@ def backfill_conversation_last_message_at() -> None:
         if latest:
             convo.last_message_at = latest
             convo.save(update_fields=["last_message_at"])
+
+
+def _actor_display_name(user: User) -> str:
+    profile = getattr(user, "profile", None)
+    name = (getattr(profile, "full_name", None) or "").strip()
+    return name or user.username or "Someone"
+
+
+def format_security_event_content(actor_name: str, event_code: str) -> str:
+    if event_code == SECURITY_EVENT_SCREENSHOT:
+        return f"📸 {actor_name} took a screenshot."
+    if event_code == SECURITY_EVENT_RECORDING_STARTED:
+        return f"🎥 {actor_name} started screen recording."
+    if event_code == SECURITY_EVENT_RECORDING_STOPPED:
+        return f"🎥 {actor_name} stopped screen recording."
+    return f"{actor_name} triggered a security event."
+
+
+def user_notify_screenshots_enabled(convo: Conversation, user: User) -> bool:
+    pref = ConversationPreference.objects.filter(conversation=convo, user=user).first()
+    if pref is None:
+        return True
+    return bool(pref.notify_screenshots)
+
+
+def should_record_security_event(convo: Conversation, actor: User, event_code: str) -> bool:
+    if event_code not in SECURITY_EVENT_CODES:
+        return False
+    if not user_notify_screenshots_enabled(convo, actor):
+        return False
+
+    last = (
+        convo.messages.filter(
+            sender=actor,
+            message_type=Message.MESSAGE_TYPE_SYSTEM,
+            event_code=event_code,
+        )
+        .order_by("-timestamp")
+        .first()
+    )
+    if last and (timezone.now() - last.timestamp).total_seconds() < _SECURITY_EVENT_DEBOUNCE_SECONDS:
+        return False
+    return True
+
+
+def create_security_system_message(
+    convo: Conversation,
+    actor: User,
+    event_code: str,
+) -> Message | None:
+    if conversation_is_blocked(convo, actor):
+        return None
+    if not should_record_security_event(convo, actor, event_code):
+        return None
+
+    actor_name = _actor_display_name(actor)
+    content = format_security_event_content(actor_name, event_code)
+    msg = Message.objects.create(
+        conversation=convo,
+        sender=actor,
+        content=content,
+        message_type=Message.MESSAGE_TYPE_SYSTEM,
+        event_code=event_code,
+    )
+    touch_conversation_activity(convo, msg.timestamp)
+
+    from notifications.dispatch import dispatch_chat_message_push
+
+    dispatch_chat_message_push(msg)
+    return msg

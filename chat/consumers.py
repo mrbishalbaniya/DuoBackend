@@ -5,6 +5,7 @@ from django.contrib.auth.models import AnonymousUser
 from .models import Conversation, Message
 from .services import (
     conversation_is_blocked,
+    create_security_system_message,
     delete_message_for_user,
     infer_message_type,
     mark_messages_delivered,
@@ -131,6 +132,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     },
                 )
 
+        elif message_type == "security_event":
+            event_code = data.get("event_code", "")
+            saved_msg = await self.record_security_event(user_id, event_code)
+            if saved_msg:
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        "type": "chat_message",
+                        "id": saved_msg["id"],
+                        "content": saved_msg["content"],
+                        "image_url": "",
+                        "sender_name": saved_msg["sender_name"],
+                        "sender_id": user_id,
+                        "timestamp": saved_msg["timestamp"],
+                        "message_type": saved_msg["message_type"],
+                        "event_code": saved_msg["event_code"],
+                    },
+                )
+
     async def chat_message(self, event):
         await self.send(
             text_data=json.dumps(
@@ -145,6 +165,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "message_type": event.get("message_type", "text"),
                     "reply_to": event.get("reply_to"),
                     "client_temp_id": event.get("client_temp_id"),
+                    "event_code": event.get("event_code", ""),
                 }
             )
         )
@@ -236,6 +257,36 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "image_url": parent.image_url or "",
             "message_type": parent.message_type,
         }
+
+    @database_sync_to_async
+    def record_security_event(self, user_id, event_code):
+        try:
+            convo = self._get_conversation()
+            if not convo:
+                return None
+            match = convo.match
+            if user_id not in (match.user1_id, match.user2_id):
+                return None
+            user = match.user1 if match.user1_id == user_id else match.user2
+            if conversation_is_blocked(convo, user):
+                return None
+
+            msg = create_security_system_message(convo, user, str(event_code or "").strip().upper())
+            if not msg:
+                return None
+
+            msg = Message.objects.select_related("sender__profile").get(id=msg.id)
+            sender_name = getattr(msg.sender.profile, "full_name", "") or msg.sender.username
+            return {
+                "id": msg.id,
+                "content": msg.content,
+                "sender_name": sender_name,
+                "timestamp": msg.timestamp.isoformat(),
+                "message_type": msg.message_type,
+                "event_code": msg.event_code,
+            }
+        except Exception:
+            return None
 
     @database_sync_to_async
     def save_message(self, user_id, content, image_url="", reply_to_id=None):

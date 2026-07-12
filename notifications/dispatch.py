@@ -59,7 +59,9 @@ def dispatch_chat_message_push(message) -> None:
             return
 
         sender_name = _display_name(message.sender)
-        if (message.content or "").strip():
+        if message.message_type == "system":
+            body = (message.content or "").strip() or "Security event in chat"
+        elif (message.content or "").strip():
             body = message.content.strip()
         elif message.image_url:
             body = "Sent you a photo"

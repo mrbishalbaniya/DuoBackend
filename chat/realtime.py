@@ -25,6 +25,7 @@ def broadcast_chat_message(
     message_type: str = "text",
     reply_to: dict | None = None,
     client_temp_id: str | None = None,
+    event_code: str | None = None,
 ) -> None:
     _send_to_chat_room(
         conversation_id,
@@ -39,6 +40,7 @@ def broadcast_chat_message(
             "message_type": message_type,
             "reply_to": reply_to,
             "client_temp_id": client_temp_id,
+            "event_code": event_code or "",
         },
     )
 

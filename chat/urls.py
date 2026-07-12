@@ -11,6 +11,7 @@ from .views import (
     ConversationClearHistoryView,
     ConversationUnmatchView,
     ConversationReportView,
+    ConversationSecurityEventView,
     WebSocketTicketView,
 )
 
@@ -19,6 +20,7 @@ urlpatterns = [
     path('conversations/', ConversationListView.as_view(), name='conversation_list'),
     path('conversations/<str:conversation_id>/', ConversationDetailView.as_view(), name='conversation_detail'),
     path('conversations/<str:conversation_id>/settings/', ConversationSettingsView.as_view(), name='conversation_settings'),
+    path('conversations/<str:conversation_id>/security-events/', ConversationSecurityEventView.as_view(), name='conversation_security_events'),
     path('conversations/<str:conversation_id>/clear/', ConversationClearHistoryView.as_view(), name='conversation_clear'),
     path('conversations/<str:conversation_id>/unmatch/', ConversationUnmatchView.as_view(), name='conversation_unmatch'),
     path('conversations/<str:conversation_id>/report/', ConversationReportView.as_view(), name='conversation_report'),

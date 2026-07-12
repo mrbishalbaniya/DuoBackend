@@ -17,9 +17,15 @@ from .realtime import (
     broadcast_messages_read,
     broadcast_typing_status,
 )
-from .serializers import ConversationSerializer, MessageSerializer, SendMessageSerializer
+from .serializers import (
+    ConversationSerializer,
+    MessageSerializer,
+    SecurityEventSerializer,
+    SendMessageSerializer,
+)
 from .services import (
     conversation_is_blocked,
+    create_security_system_message,
     delete_message_for_user,
     infer_message_type,
     mark_messages_delivered,
@@ -390,6 +396,12 @@ class ConversationSettingsView(APIView):
         if 'is_pinned' in request.data:
             pref.is_pinned = bool(request.data.get('is_pinned'))
             update_fields.append('is_pinned')
+        if 'notify_screenshots' in request.data:
+            pref.notify_screenshots = bool(request.data.get('notify_screenshots'))
+            update_fields.append('notify_screenshots')
+        if 'secure_chat' in request.data:
+            pref.secure_chat = bool(request.data.get('secure_chat'))
+            update_fields.append('secure_chat')
 
         pref.save(update_fields=update_fields)
 
@@ -398,7 +410,65 @@ class ConversationSettingsView(APIView):
             'is_archived': pref.is_archived,
             'is_muted': pref.is_muted,
             'is_pinned': pref.is_pinned,
+            'notify_screenshots': pref.notify_screenshots,
+            'secure_chat': pref.secure_chat,
         })
+
+
+class ConversationSecurityEventView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Chat"],
+        summary="Report a screenshot or screen recording event",
+        request=SecurityEventSerializer,
+        responses={201: MessageSerializer},
+    )
+    def post(self, request, conversation_id):
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
+
+        serializer = SecurityEventSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        event_code = serializer.validated_data["event_code"]
+
+        msg = create_security_system_message(convo, request.user, event_code)
+        if not msg:
+            return Response(
+                {'detail': 'Security event was not recorded.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        msg = (
+            Message.objects.select_related(
+                "sender__profile",
+                "conversation__match",
+                "reply_to",
+                "reply_to__sender__profile",
+            )
+            .prefetch_related('reactions')
+            .get(id=msg.id)
+        )
+
+        profile = getattr(request.user, "profile", None)
+        sender_name = (getattr(profile, "full_name", None) or "").strip() or request.user.username
+        broadcast_chat_message(
+            convo.public_id,
+            msg_id=msg.id,
+            content=msg.content,
+            image_url="",
+            sender_id=request.user.id,
+            sender_name=sender_name,
+            timestamp=msg.timestamp.isoformat(),
+            message_type=msg.message_type,
+            event_code=msg.event_code,
+        )
+
+        return Response(
+            MessageSerializer(msg, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ConversationClearHistoryView(APIView):

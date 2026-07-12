@@ -47,6 +47,8 @@ class ConversationPreference(models.Model):
     is_archived = models.BooleanField(default=False)
     is_muted = models.BooleanField(default=False)
     is_pinned = models.BooleanField(default=False)
+    notify_screenshots = models.BooleanField(default=True)
+    secure_chat = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -89,10 +91,12 @@ class Message(models.Model):
     MESSAGE_TYPE_TEXT = "text"
     MESSAGE_TYPE_IMAGE = "image"
     MESSAGE_TYPE_VOICE = "voice"
+    MESSAGE_TYPE_SYSTEM = "system"
     MESSAGE_TYPE_CHOICES = [
         (MESSAGE_TYPE_TEXT, "Text"),
         (MESSAGE_TYPE_IMAGE, "Image"),
         (MESSAGE_TYPE_VOICE, "Voice"),
+        (MESSAGE_TYPE_SYSTEM, "System"),
     ]
 
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
@@ -100,6 +104,7 @@ class Message(models.Model):
     content = models.TextField(blank=True)
     image_url = models.CharField(max_length=1000, blank=True)
     message_type = models.CharField(max_length=10, choices=MESSAGE_TYPE_CHOICES, default=MESSAGE_TYPE_TEXT)
+    event_code = models.CharField(max_length=32, blank=True, default="")
     reply_to = models.ForeignKey(
         "self",
         null=True,

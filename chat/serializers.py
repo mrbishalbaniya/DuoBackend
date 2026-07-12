@@ -42,6 +42,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'reply_to',
             'is_deleted_for_everyone',
             'is_deleted_for_me',
+            'event_code',
         ]
 
     def get_reactions(self, obj):
@@ -88,6 +89,8 @@ class ConversationSerializer(serializers.ModelSerializer):
     is_archived = serializers.SerializerMethodField()
     is_muted = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
+    notify_screenshots = serializers.SerializerMethodField()
+    secure_chat = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
@@ -106,6 +109,8 @@ class ConversationSerializer(serializers.ModelSerializer):
             'is_archived',
             'is_muted',
             'is_pinned',
+            'notify_screenshots',
+            'secure_chat',
         ]
 
     def get_other_user_profile(self, obj):
@@ -167,6 +172,14 @@ class ConversationSerializer(serializers.ModelSerializer):
         pref = self._get_user_pref(obj)
         return bool(pref and pref.is_pinned)
 
+    def get_notify_screenshots(self, obj):
+        pref = self._get_user_pref(obj)
+        return bool(pref.notify_screenshots) if pref else True
+
+    def get_secure_chat(self, obj):
+        pref = self._get_user_pref(obj)
+        return bool(pref and pref.secure_chat)
+
 
 class SendMessageSerializer(serializers.Serializer):
     content = serializers.CharField(required=False, allow_blank=True, default='')
@@ -182,3 +195,15 @@ class SendMessageSerializer(serializers.Serializer):
         if not convo.messages.filter(id=value).exists():
             raise serializers.ValidationError('Reply target not found in this conversation.')
         return value
+
+
+class SecurityEventSerializer(serializers.Serializer):
+    event_code = serializers.CharField(max_length=32)
+
+    def validate_event_code(self, value):
+        from .services import SECURITY_EVENT_CODES
+
+        code = str(value or "").strip().upper()
+        if code not in SECURITY_EVENT_CODES:
+            raise serializers.ValidationError('Invalid security event code.')
+        return code
