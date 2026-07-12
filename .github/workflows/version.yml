@@ -1,0 +1,49 @@
+name: Version
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: Semantic Version Bump
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[release]')
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next version
+        id: version
+        run: |
+          LAST=$(git tag -l "v*" --sort=-v:refname | head -n1)
+          if [ -z "$LAST" ]; then
+            NEXT="v1.0.0"
+          else
+            MAJOR=$(echo "$LAST" | sed 's/v//' | cut -d. -f1)
+            MINOR=$(echo "$LAST" | sed 's/v//' | cut -d. -f2)
+            PATCH=$(echo "$LAST" | sed 's/v//' | cut -d. -f3)
+            PATCH=$((PATCH + 1))
+            NEXT="v${MAJOR}.${MINOR}.${PATCH}"
+          fi
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Next version: $NEXT"
+
+      - name: Generate changelog
+        run: bash .github/scripts/generate-changelog.sh CHANGELOG.md
+
+      - name: Commit changelog
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --quiet || git commit -m "chore: update changelog for ${{ steps.version.outputs.next }}"
+          git tag -a "${{ steps.version.outputs.next }}" -m "Release ${{ steps.version.outputs.next }}" || true
+          git push origin main --tags || true
