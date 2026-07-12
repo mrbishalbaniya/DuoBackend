@@ -208,6 +208,16 @@ class SiteSettings(models.Model):
         blank=True,
         help_text="Firebase web app ID (1:...:web:...).",
     )
+    firebase_android_app_id = models.CharField(
+        max_length=128,
+        blank=True,
+        help_text="Firebase Android app ID (1:...:android:...). Required for DuoMobile push.",
+    )
+    firebase_ios_app_id = models.CharField(
+        max_length=128,
+        blank=True,
+        help_text="Firebase iOS app ID (1:...:ios:...). Required for DuoMobile push on iOS.",
+    )
     fcm_vapid_key = models.CharField(
         max_length=512,
         blank=True,

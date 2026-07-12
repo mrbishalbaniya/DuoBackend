@@ -59,6 +59,7 @@ class FCMService:
         self,
         token: str,
         *,
+        platform: str = "web",
         title: str,
         body: str,
         data: dict[str, str] | None = None,
@@ -119,6 +120,16 @@ class FCMService:
             }
         }
 
+        if platform == "android":
+            payload["message"]["android"] = {
+                "priority": "HIGH",
+            }
+        elif platform == "ios":
+            payload["message"]["apns"] = {
+                "headers": {"apns-priority": "10"},
+                "payload": {"aps": {"content-available": 1}},
+            }
+
         headers = {
             "Authorization": f"Bearer {self._access_token()}",
             "Content-Type": "application/json; charset=UTF-8",
@@ -175,7 +186,7 @@ class FCMService:
 
         tokens = list(
             DeviceToken.objects.filter(user_id=user_id, is_active=True).values_list(
-                "token", flat=True
+                "token", "platform"
             )
         )
         if not tokens:
@@ -183,9 +194,10 @@ class FCMService:
             return 0
 
         sent = 0
-        for token in tokens:
+        for token, platform in tokens:
             if self.send_to_token(
                 token,
+                platform=platform or "web",
                 title=title,
                 body=body,
                 data=data,

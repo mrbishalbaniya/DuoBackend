@@ -57,6 +57,8 @@ class IntegrationSettings:
     firebase_auth_domain: str
     firebase_messaging_sender_id: str
     firebase_app_id: str
+    firebase_android_app_id: str
+    firebase_ios_app_id: str
     fcm_vapid_key: str
     firebase_service_account_json: str
 
@@ -262,6 +264,14 @@ def get_integration_settings() -> IntegrationSettings:
             getattr(settings, "FIREBASE_MESSAGING_SENDER_ID", ""),
         ),
         firebase_app_id=_pick_str(db("firebase_app_id"), getattr(settings, "FIREBASE_APP_ID", "")),
+        firebase_android_app_id=_pick_str(
+            db("firebase_android_app_id"),
+            getattr(settings, "FIREBASE_ANDROID_APP_ID", ""),
+        ),
+        firebase_ios_app_id=_pick_str(
+            db("firebase_ios_app_id"),
+            getattr(settings, "FIREBASE_IOS_APP_ID", ""),
+        ),
         fcm_vapid_key=_pick_str(db("fcm_vapid_key"), getattr(settings, "FCM_VAPID_KEY", "")),
         firebase_service_account_json=decrypt_secret(
             _pick_str(

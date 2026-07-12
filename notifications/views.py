@@ -9,25 +9,55 @@ from notifications.models import DeviceToken
 from notifications.serializers import DeviceTokenSerializer
 
 
-def _public_fcm_config():
+def _resolve_app_id(cfg, platform: str) -> str:
+    if platform == "android":
+        return (cfg.firebase_android_app_id or cfg.firebase_app_id or "").strip()
+    if platform == "ios":
+        return (cfg.firebase_ios_app_id or cfg.firebase_app_id or "").strip()
+    return (cfg.firebase_app_id or "").strip()
+
+
+def _public_fcm_config(request=None):
     cfg = get_integration_settings()
     if not cfg.fcm_enabled:
         return {"enabled": False}
+
+    platform = "web"
+    if request is not None:
+        platform = (request.query_params.get("platform") or "web").strip().lower()
 
     firebase = {
         "apiKey": cfg.firebase_api_key,
         "authDomain": cfg.firebase_auth_domain,
         "projectId": cfg.firebase_project_id,
         "messagingSenderId": cfg.firebase_messaging_sender_id,
-        "appId": cfg.firebase_app_id,
+        "appId": _resolve_app_id(cfg, platform),
     }
-    if not all(firebase.values()) or not cfg.fcm_vapid_key:
+
+    core_ready = all(
+        [
+            firebase["apiKey"],
+            firebase["projectId"],
+            firebase["messagingSenderId"],
+            firebase["appId"],
+        ]
+    )
+    if not core_ready:
         return {"enabled": False}
 
+    if platform == "web":
+        if not cfg.fcm_vapid_key:
+            return {"enabled": False}
+        return {
+            "enabled": True,
+            "firebase": firebase,
+            "vapidKey": cfg.fcm_vapid_key,
+        }
+
+    # Android / iOS — VAPID is web-only; mobile only needs Firebase core + platform app ID.
     return {
         "enabled": True,
         "firebase": firebase,
-        "vapidKey": cfg.fcm_vapid_key,
     }
 
 
@@ -37,7 +67,7 @@ class NotificationConfigView(APIView):
     authentication_classes = []
 
     def get(self, request):
-        return Response(_public_fcm_config())
+        return Response(_public_fcm_config(request))
 
 
 @extend_schema(tags=["Notifications"])
