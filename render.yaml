@@ -66,6 +66,12 @@ services:
         sync: false
       - key: ESEWA_FAILURE_URL
         sync: false
+      - key: ESEWA_MOBILE_CLIENT_ID
+        sync: false
+      - key: ESEWA_MOBILE_SECRET_KEY
+        sync: false
+      - key: ESEWA_MOBILE_LIVE
+        value: "False"
       - key: EMAIL_HOST
         sync: false
       - key: EMAIL_HOST_USER

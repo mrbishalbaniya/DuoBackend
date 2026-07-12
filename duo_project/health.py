@@ -1,5 +1,6 @@
 from django.db import connection
 from django.http import JsonResponse
+from django.urls import NoReverseMatch, reverse
 import os
 
 
@@ -12,6 +13,14 @@ def health_check(_request):
     except Exception:
         db_ok = False
 
+    wallet_routes = False
+    try:
+        reverse("wallet")
+        reverse("wallet_topup_initiate")
+        wallet_routes = True
+    except NoReverseMatch:
+        wallet_routes = False
+
     status_code = 200 if db_ok else 503
     commit = os.environ.get("RENDER_GIT_COMMIT", "")
     return JsonResponse(
@@ -19,7 +28,8 @@ def health_check(_request):
             "status": "ok" if db_ok else "degraded",
             "database": db_ok,
             "api_version": commit[:8] if commit else "local",
-            "features": {"wallet": True},
+            "features": {"wallet": wallet_routes},
+            "wallet_routes": wallet_routes,
         },
         status=status_code,
     )
