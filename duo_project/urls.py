@@ -43,6 +43,7 @@ urlpatterns = [
     path("api/notifications/", include("notifications.urls")),
     path("api/activity/", include("activity.urls")),
     path("api/avatars/", include("avatars.urls")),
+    path("api/app/", include("update.urls")),
 ]
 
 if settings.DEBUG:
@@ -62,6 +63,7 @@ if settings.DEBUG:
         ),
     ]
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 else:
     urlpatterns += [
         path("api/schema/", PublicSchemaView.as_view(), name="schema"),

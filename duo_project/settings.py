@@ -104,6 +104,7 @@ INSTALLED_APPS = [
     "notifications",
     "activity",
     "avatars",
+    "update",
 ]
 
 MIDDLEWARE = [
@@ -208,6 +209,42 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# OTA APK storage (local dev; use S3/R2/Spaces in production via OTA_STORAGE_BACKEND).
+MEDIA_URL = config("MEDIA_URL", default="/media/")
+MEDIA_ROOT = BASE_DIR / config("MEDIA_ROOT", default="media")
+
+OTA_PUBLISH_TOKEN = env("OTA_PUBLISH_TOKEN")
+OTA_STORAGE_BACKEND = config("OTA_STORAGE_BACKEND", default="local")  # local | s3 | r2 | spaces
+OTA_S3_BUCKET_NAME = env("OTA_S3_BUCKET_NAME")
+OTA_S3_ACCESS_KEY_ID = env("OTA_S3_ACCESS_KEY_ID")
+OTA_S3_SECRET_ACCESS_KEY = env("OTA_S3_SECRET_ACCESS_KEY")
+OTA_S3_REGION_NAME = config("OTA_S3_REGION_NAME", default="auto")
+OTA_S3_ENDPOINT_URL = env("OTA_S3_ENDPOINT_URL")  # R2 / DO Spaces custom endpoint
+OTA_S3_CUSTOM_DOMAIN = env("OTA_S3_CUSTOM_DOMAIN")
+OTA_S3_LOCATION = config("OTA_S3_LOCATION", default="apk")
+OTA_S3_DEFAULT_ACL = config("OTA_S3_DEFAULT_ACL", default="public-read")
+
+if OTA_STORAGE_BACKEND in {"s3", "r2", "spaces"}:
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            "OPTIONS": {
+                "bucket_name": OTA_S3_BUCKET_NAME,
+                "access_key": OTA_S3_ACCESS_KEY_ID,
+                "secret_key": OTA_S3_SECRET_ACCESS_KEY,
+                "region_name": OTA_S3_REGION_NAME,
+                "endpoint_url": OTA_S3_ENDPOINT_URL or None,
+                "default_acl": OTA_S3_DEFAULT_ACL,
+                "location": OTA_S3_LOCATION,
+                "file_overwrite": True,
+                "custom_domain": OTA_S3_CUSTOM_DOMAIN or None,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
 
 # User uploads are stored in Cloudinary — not DuoBackend/media/
 CLOUDINARY_CLOUD_NAME = env("CLOUDINARY_CLOUD_NAME")
@@ -396,6 +433,7 @@ SPECTACULAR_SETTINGS = {
         {"name": "Photos", "description": "AI profile photo verification and quality analysis."},
         {"name": "Verification", "description": "Selfie liveness and face-matching verification."},
         {"name": "Weather", "description": "Live OpenWeather proxy — forecasts, tiles, air quality."},
+        {"name": "App Updates", "description": "Self-hosted OTA version checks and APK distribution."},
     ],
     "SWAGGER_UI_SETTINGS": {
         "deepLinking": True,
