@@ -1,0 +1,126 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static portal_tags %}
+
+{% block bodyclass %}dashboard{% endblock %}
+{% block content_title %}{% trans "Command Center" %}{% endblock %}
+
+{% block breadcrumbs %}
+<ol class="duo-breadcrumb">
+  <li><a href="{% url 'admin:index' %}">{% trans "Home" %}</a></li>
+  <li aria-current="page">{% trans "Dashboard" %}</li>
+</ol>
+{% endblock %}
+
+{% block content %}
+<div class="duo-dashboard" id="duo-dashboard" data-dashboard-root>
+  <section class="duo-dashboard__hero">
+    <div>
+      <p class="duo-dashboard__eyebrow">{% trans "Executive Overview" %}</p>
+      <h2>{% trans "Welcome back" %}, {{ request.user.get_username }}</h2>
+      <p class="duo-dashboard__subtitle">{% trans "Real-time platform intelligence at a glance." %}</p>
+    </div>
+    <div class="duo-dashboard__hero-meta">
+      <span class="duo-live-chip"><span class="duo-live-dot"></span> {% trans "Live" %}</span>
+      <span id="dashboard-updated-at">—</span>
+    </div>
+  </section>
+
+  <section class="duo-kpi-grid" id="kpi-grid" aria-label="{% trans 'Key metrics' %}">
+    <article class="duo-kpi duo-kpi--featured" data-kpi="total_revenue">
+      <span class="duo-kpi__label">{% trans "Today's Revenue" %}</span>
+      <strong class="duo-kpi__value" data-field="todays_revenue">—</strong>
+      <span class="duo-kpi__meta">{% trans "Monthly" %}: <span data-field="monthly_revenue">—</span></span>
+    </article>
+    <article class="duo-kpi" data-kpi="users">
+      <span class="duo-kpi__label">{% trans "Total Users" %}</span>
+      <strong class="duo-kpi__value" data-field="total_users">—</strong>
+      <span class="duo-kpi__meta">+ <span data-field="todays_users">0</span> {% trans "today" %}</span>
+    </article>
+    <article class="duo-kpi" data-kpi="online">
+      <span class="duo-kpi__label">{% trans "Online Users" %}</span>
+      <strong class="duo-kpi__value duo-kpi__value--live" data-field="online_users">—</strong>
+    </article>
+    <article class="duo-kpi">
+      <span class="duo-kpi__label">{% trans "Premium Users" %}</span>
+      <strong class="duo-kpi__value" data-field="premium_users">—</strong>
+    </article>
+    <article class="duo-kpi">
+      <span class="duo-kpi__label">{% trans "Verified Users" %}</span>
+      <strong class="duo-kpi__value" data-field="verified_users">—</strong>
+    </article>
+    <article class="duo-kpi">
+      <span class="duo-kpi__label">{% trans "Matches Today" %}</span>
+      <strong class="duo-kpi__value" data-field="matches_today">—</strong>
+    </article>
+    <article class="duo-kpi">
+      <span class="duo-kpi__label">{% trans "Messages Today" %}</span>
+      <strong class="duo-kpi__value" data-field="messages_today">—</strong>
+    </article>
+    <article class="duo-kpi">
+      <span class="duo-kpi__label">{% trans "Wallet Balance" %}</span>
+      <strong class="duo-kpi__value" data-field="wallet_balance">—</strong>
+    </article>
+    <article class="duo-kpi duo-kpi--warn">
+      <span class="duo-kpi__label">{% trans "Pending Verifications" %}</span>
+      <strong class="duo-kpi__value" data-field="pending_verifications">—</strong>
+    </article>
+    <article class="duo-kpi">
+      <span class="duo-kpi__label">{% trans "Open Reports" %}</span>
+      <strong class="duo-kpi__value" data-field="open_reports">—</strong>
+    </article>
+  </section>
+
+  <div class="duo-dashboard__grid">
+    <section class="duo-panel duo-panel--wide">
+      <header class="duo-panel__header"><h3>{% trans "Revenue" %}</h3></header>
+      <canvas id="chart-revenue" height="100"></canvas>
+    </section>
+    <section class="duo-panel duo-panel--wide">
+      <header class="duo-panel__header"><h3>{% trans "User Growth" %}</h3></header>
+      <canvas id="chart-users" height="100"></canvas>
+    </section>
+    <section class="duo-panel">
+      <header class="duo-panel__header"><h3>{% trans "Platform Usage" %}</h3></header>
+      <canvas id="chart-platform" height="140"></canvas>
+    </section>
+    <section class="duo-panel">
+      <header class="duo-panel__header"><h3>{% trans "Gender Distribution" %}</h3></header>
+      <canvas id="chart-gender" height="140"></canvas>
+    </section>
+    <section class="duo-panel">
+      <header class="duo-panel__header"><h3>{% trans "System Health" %}</h3></header>
+      <ul class="duo-health-list" id="system-health-list">
+        <li><span>{% trans "API" %}</span><strong data-field="api_status">—</strong></li>
+        <li><span>{% trans "Database" %}</span><strong data-field="database_status">—</strong></li>
+        <li><span>{% trans "Redis" %}</span><strong data-field="redis_status">—</strong></li>
+        <li><span>{% trans "Server" %}</span><strong data-field="server_health">—</strong></li>
+      </ul>
+    </section>
+    <section class="duo-panel">
+      <header class="duo-panel__header"><h3>{% trans "Quick Actions" %}</h3></header>
+      <div class="duo-quick-actions">
+        {% get_quick_actions as quick_actions %}
+        {% for action in quick_actions %}
+        <a href="{{ action.url }}" class="duo-quick-action duo-quick-action--{{ action.color }}">
+          <i class="{{ action.icon }}"></i>
+          <span>{{ action.label }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </section>
+    <section class="duo-panel duo-panel--wide">
+      <header class="duo-panel__header"><h3>{% trans "Recent Activity" %}</h3></header>
+      <ul class="duo-timeline" id="activity-timeline"></ul>
+    </section>
+    <section class="duo-panel">
+      <header class="duo-panel__header"><h3>{% trans "Top Cities" %}</h3></header>
+      <ul class="duo-rank-list" id="top-cities-list"></ul>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<script>document.documentElement.classList.add('duo-dashboard-page');</script>
+{% endblock %}

@@ -1,0 +1,91 @@
+{% load i18n static jazzmin admin_urls %}
+{% get_current_language as LANGUAGE_CODE %}
+{% get_jazzmin_settings request as jazzmin_settings %}
+<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE|default:'en-us' }}" data-portal-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="none, noarchive">
+  <title>{% block title %}{{ title }} | {{ jazzmin_settings.site_title }}{% endblock %}</title>
+  <script>
+    (function () {
+      var pref = localStorage.getItem("duo-portal-theme") || "dark";
+      var resolved = pref === "system" && window.matchMedia
+        ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+        : (pref === "system" ? "dark" : pref);
+      document.documentElement.setAttribute("data-portal-theme", resolved);
+      document.documentElement.setAttribute("data-bs-theme", resolved);
+    })();
+  </script>
+  <link rel="stylesheet" href="{% static 'vendor/fontawesome-free/css/all.min.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/adminlte/css/adminlte.min.css' %}">
+  <link rel="stylesheet" href="{% static 'jazzmin/css/main.css' %}">
+  <link rel="stylesheet" href="{% static 'portal/css/portal.css' %}">
+  <link rel="shortcut icon" href="{% static jazzmin_settings.site_icon %}" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  {% block extrastyle %}{% endblock %}
+  {% block extrahead %}{% endblock %}
+</head>
+<body class="duo-portal {% if is_popup %}duo-portal--popup{% endif %} {% block bodyclass %}{% endblock %}" data-admin-utc-offset="{% now 'Z' %}">
+
+{% if not is_popup %}
+<div class="duo-portal-shell" id="duo-portal-shell">
+  {% include "admin/includes/portal_sidebar.html" %}
+  <div class="duo-portal-content">
+    {% include "admin/includes/portal_navbar.html" %}
+    <main class="duo-portal-page">
+      <div class="duo-portal-page__header">
+        <div>
+          <nav class="duo-portal-breadcrumbs" aria-label="{% trans 'Breadcrumb' %}">
+            {% block breadcrumbs %}{% endblock %}
+          </nav>
+          <h1 class="duo-portal-page__title">{% block content_title %}{% endblock %}</h1>
+        </div>
+        <div class="duo-portal-page__actions">{% block page_actions %}{% endblock %}</div>
+      </div>
+      {% block messages %}
+      <div class="duo-portal-messages">
+        {% for message in messages %}
+        <div class="duo-portal-alert duo-portal-alert--{{ message.tags }}" role="alert">
+          {{ message|capfirst }}
+          <button type="button" class="duo-portal-alert__close" data-dismiss-alert>&times;</button>
+        </div>
+        {% endfor %}
+      </div>
+      {% endblock %}
+      <div class="duo-portal-page__body">
+{% else %}
+<main class="duo-portal-page duo-portal-page--popup">
+{% endif %}
+
+        {% block content %}{% endblock %}
+
+{% if not is_popup %}
+      </div>
+    </main>
+    <footer class="duo-portal-footer">
+      <span>&copy; {% now 'Y' %} {{ jazzmin_settings.copyright|default:'Duo Matrimonial' }}</span>
+      <span class="duo-portal-footer__status" id="portal-live-status">{% trans 'Live' %}</span>
+    </footer>
+  </div>
+</div>
+{% include "admin/includes/portal_command_palette.html" %}
+{% else %}
+</main>
+{% endif %}
+
+<script src="{% static 'admin/js/vendor/jquery/jquery.js' %}"></script>
+<script src="{% static 'vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+<script src="{% static 'vendor/adminlte/js/adminlte.min.js' %}"></script>
+<script src="{% static 'jazzmin/js/main.js' %}"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<script src="{% static 'portal/js/portal.js' %}" defer></script>
+<script src="{% static 'portal/js/command-palette.js' %}" defer></script>
+<script src="{% static 'portal/js/charts.js' %}" defer></script>
+<script src="{% static 'portal/js/realtime.js' %}" defer></script>
+{% block extrajs %}{% endblock %}
+</body>
+</html>

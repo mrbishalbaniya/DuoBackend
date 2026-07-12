@@ -1,0 +1,12 @@
+{% load i18n %}
+<div class="duo-command-palette" id="command-palette" hidden role="dialog" aria-modal="true" aria-label="{% trans 'Command palette' %}">
+  <div class="duo-command-palette__backdrop" data-close-palette></div>
+  <div class="duo-command-palette__dialog">
+    <div class="duo-command-palette__input-wrap">
+      <i class="fas fa-terminal"></i>
+      <input type="text" id="command-palette-input" placeholder="{% trans 'Search commands, pages, actions…' %}" autocomplete="off">
+      <kbd>ESC</kbd>
+    </div>
+    <ul class="duo-command-palette__results" id="command-palette-results"></ul>
+  </div>
+</div>

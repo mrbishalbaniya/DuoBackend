@@ -1,5 +1,6 @@
 from django.contrib.auth import authenticate
 from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 
@@ -12,7 +13,7 @@ class DuoTokenObtainPairSerializer(TokenObtainPairSerializer):
         }
         user = authenticate(request=request, **credentials)
         if user is None:
-            raise serializers.ValidationError("No active account found with the given credentials")
+            raise AuthenticationFailed("No active account found with the given credentials")
 
         from security.services import security_service
 

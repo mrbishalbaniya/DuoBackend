@@ -1,0 +1,52 @@
+{% load i18n static portal_tags %}
+<aside class="duo-portal-sidebar" id="duo-portal-sidebar" aria-label="{% trans 'Main navigation' %}">
+  <div class="duo-portal-sidebar__brand">
+    <a href="{% url 'admin:index' %}" class="duo-portal-sidebar__logo">
+      <img src="{% static 'admin/img/duo-mark.svg' %}" alt="Duo" width="36" height="36">
+      <span class="duo-portal-sidebar__brand-text">Duo Portal</span>
+    </a>
+    <button type="button" class="duo-portal-sidebar__collapse" id="sidebar-collapse" aria-label="{% trans 'Collapse sidebar' %}">
+      <i class="fas fa-angles-left"></i>
+    </button>
+  </div>
+
+  <div class="duo-portal-sidebar__workspace">
+    <span class="duo-portal-sidebar__workspace-label">{% trans 'Workspace' %}</span>
+    <strong>Duo Matrimonial</strong>
+  </div>
+
+  <nav class="duo-portal-sidebar__nav">
+    {% get_portal_menu as portal_groups %}
+    {% for group in portal_groups %}
+    <div class="duo-portal-nav-group" data-group="{{ group.id }}">
+      <button type="button" class="duo-portal-nav-group__toggle" aria-expanded="true">
+        <i class="{{ group.icon }} duo-portal-nav-group__icon"></i>
+        <span>{{ group.label }}</span>
+        {% if group.badge %}<span class="duo-portal-badge">{{ group.badge }}</span>{% endif %}
+        <i class="fas fa-chevron-down duo-portal-nav-group__chevron"></i>
+      </button>
+      <ul class="duo-portal-nav-group__items">
+        {% for item in group.items %}
+        <li>
+          <a href="{{ item.url }}" class="duo-portal-nav-link{% if request.path == item.url %} is-active{% endif %}">
+            <i class="{{ item.icon }}"></i>
+            <span>{{ item.label }}</span>
+            {% if item.badge %}<span class="duo-portal-badge duo-portal-badge--sm">{{ item.badge }}</span>{% endif %}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </nav>
+
+  <div class="duo-portal-sidebar__footer">
+    <div class="duo-portal-sidebar__user">
+      <i class="fas fa-user-circle"></i>
+      <div>
+        <strong>{{ request.user.get_username }}</strong>
+        <span>{% trans 'Administrator' %}</span>
+      </div>
+    </div>
+  </div>
+</aside>

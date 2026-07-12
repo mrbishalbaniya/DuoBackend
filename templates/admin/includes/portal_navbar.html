@@ -1,0 +1,91 @@
+{% load i18n static jazzmin admin_urls portal_tags %}
+<header class="duo-portal-topbar" id="duo-portal-topbar">
+  <div class="duo-portal-topbar__left">
+    <button type="button" class="duo-portal-icon-btn" id="mobile-sidebar-toggle" aria-label="{% trans 'Toggle menu' %}">
+      <i class="fas fa-bars"></i>
+    </button>
+    <div class="duo-portal-search" id="global-search-wrap">
+      <i class="fas fa-search"></i>
+      <input type="search" id="global-search-input" placeholder="{% trans 'Search everywhere…' %} (Ctrl+K)" autocomplete="off" aria-label="{% trans 'Global search' %}">
+      <kbd>Ctrl K</kbd>
+      <div class="duo-portal-search__results" id="global-search-results" hidden></div>
+    </div>
+  </div>
+
+  <div class="duo-portal-topbar__right">
+    <button type="button" class="duo-portal-icon-btn duo-portal-quick-add" id="quick-add-btn" title="{% trans 'Quick add' %}">
+      <i class="fas fa-plus"></i>
+    </button>
+
+    <div class="duo-portal-dropdown">
+      <button type="button" class="duo-portal-icon-btn" id="notifications-btn" aria-label="{% trans 'Notifications' %}">
+        <i class="fas fa-bell"></i>
+        <span class="duo-portal-badge duo-portal-badge--dot" id="notifications-count"></span>
+      </button>
+      <div class="duo-portal-dropdown__panel" id="notifications-panel" hidden>
+        <div class="duo-portal-dropdown__header">
+          <strong>{% trans 'Notifications' %}</strong>
+          <button type="button" class="duo-portal-link-btn" id="mark-all-read">{% trans 'Mark all read' %}</button>
+        </div>
+        <div class="duo-portal-dropdown__body" id="notifications-list"></div>
+      </div>
+    </div>
+
+    <div class="duo-portal-dropdown">
+      <button type="button" class="duo-portal-icon-btn" id="theme-menu-btn" aria-label="{% trans 'Theme' %}" title="{% trans 'Theme' %}">
+        <i class="fas fa-sun" id="theme-menu-icon" aria-hidden="true"></i>
+      </button>
+      <div class="duo-portal-dropdown__panel duo-portal-dropdown__panel--end duo-portal-theme-panel" id="theme-panel" hidden>
+        <div class="duo-portal-dropdown__header">
+          <strong>{% trans 'Appearance' %}</strong>
+        </div>
+        <div class="duo-portal-theme-options" role="group" aria-label="{% trans 'Theme' %}">
+          <button type="button" class="duo-portal-theme-option" data-theme-choice="light">
+            <i class="fas fa-sun"></i>
+            <span>{% trans 'Light' %}</span>
+            <i class="fas fa-check duo-portal-theme-option__check" hidden></i>
+          </button>
+          <button type="button" class="duo-portal-theme-option" data-theme-choice="dark">
+            <i class="fas fa-moon"></i>
+            <span>{% trans 'Dark' %}</span>
+            <i class="fas fa-check duo-portal-theme-option__check" hidden></i>
+          </button>
+          <button type="button" class="duo-portal-theme-option" data-theme-choice="system">
+            <i class="fas fa-desktop"></i>
+            <span>{% trans 'System' %}</span>
+            <i class="fas fa-check duo-portal-theme-option__check" hidden></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="duo-portal-dropdown">
+      <button type="button" class="duo-portal-profile-btn" id="profile-menu-btn">
+        <span class="duo-portal-profile-avatar">{{ request.user.get_username|slice:":1"|upper }}</span>
+        <span class="duo-portal-profile-name">{{ request.user.get_username }}</span>
+        <i class="fas fa-chevron-down"></i>
+      </button>
+      <div class="duo-portal-dropdown__panel duo-portal-dropdown__panel--end" id="profile-panel" hidden>
+        <a href="{% url 'admin-account' %}" class="duo-portal-dropdown__item"><i class="fas fa-user"></i> {% trans 'My account' %}</a>
+        <a href="{% url 'admin:password_change' %}" class="duo-portal-dropdown__item"><i class="fas fa-key"></i> {% trans 'Settings' %}</a>
+        <a href="/api/docs/" target="_blank" class="duo-portal-dropdown__item"><i class="fas fa-book"></i> {% trans 'API Docs' %}</a>
+        <div class="duo-portal-dropdown__divider"></div>
+        <div class="duo-portal-dropdown__subheader">{% trans 'Appearance' %}</div>
+        <button type="button" class="duo-portal-dropdown__item duo-portal-profile-theme" data-theme-choice="light">
+          <i class="fas fa-sun"></i> {% trans 'Light mode' %}
+        </button>
+        <button type="button" class="duo-portal-dropdown__item duo-portal-profile-theme" data-theme-choice="dark">
+          <i class="fas fa-moon"></i> {% trans 'Dark mode' %}
+        </button>
+        <button type="button" class="duo-portal-dropdown__item duo-portal-profile-theme" data-theme-choice="system">
+          <i class="fas fa-desktop"></i> {% trans 'System theme' %}
+        </button>
+        <div class="duo-portal-dropdown__divider"></div>
+        <form method="post" action="{% url 'admin:logout' %}">
+          {% csrf_token %}
+          <button type="submit" class="duo-portal-dropdown__item duo-portal-dropdown__item--danger"><i class="fas fa-sign-out-alt"></i> {% trans 'Logout' %}</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</header>

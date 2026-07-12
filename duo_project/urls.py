@@ -46,6 +46,7 @@ urlpatterns = [
     path("api/app/", include("update.urls")),
     path("api/security/", include("security.urls")),
     path("api/analytics/", include("analytics.urls")),
+    path("api/portal/", include("admin_portal.urls")),
 ]
 
 if settings.DEBUG:

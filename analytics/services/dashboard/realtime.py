@@ -50,7 +50,7 @@ def _build_realtime_metrics() -> dict:
             created_at__gte=last_hour,
         ).count(),
         "support_requests": UserReport.objects.filter(created_at__gte=last_hour).count(),
-        "verification_queue": UserVerification.objects.filter(verification_status="pending").count(),
+        "verification_queue": UserVerification.objects.filter(verification_status="PENDING").count(),
         "server_load": {
             "websocket_connections": 0,
             "queue_depth": 0,

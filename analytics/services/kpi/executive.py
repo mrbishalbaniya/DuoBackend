@@ -119,7 +119,7 @@ def _build_executive_dashboard(filters: dict) -> dict:
     refunds = SubscriptionPayment.objects.filter(status=SubscriptionPayment.STATUS_CANCELED).count()
     failed_payments = SubscriptionPayment.objects.filter(status=SubscriptionPayment.STATUS_FAILED).count()
     reports = UserReport.objects.count()
-    verification_queue = UserVerification.objects.filter(verification_status="pending").count()
+    verification_queue = UserVerification.objects.filter(verification_status="PENDING").count()
 
     return {
         "generated_at": now.isoformat(),

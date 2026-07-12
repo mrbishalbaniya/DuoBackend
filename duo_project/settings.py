@@ -107,6 +107,7 @@ INSTALLED_APPS = [
     "update",
     "security",
     "analytics",
+    "admin_portal",
 ]
 
 MIDDLEWARE = [
@@ -529,8 +530,8 @@ JAZZMIN_SETTINGS = {
     "copyright": "Duo Matrimonial",
     "search_model": "auth.User",
     "user_avatar": None,
-    "custom_css": "admin/css/duo_admin.css",
-    "custom_js": "admin/js/duo_admin.js",
+    "custom_css": "portal/css/portal.css",
+    "custom_js": "portal/js/portal.js",
     "use_google_fonts_cdn": False,
     "show_ui_builder": False,
     "show_theme_chooser": False,
