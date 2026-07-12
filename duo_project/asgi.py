@@ -19,6 +19,7 @@ from channels.routing import ProtocolTypeRouter, URLRouter
 
 import chat.routing
 import activity.routing
+import analytics.routing
 from duo_project.channels_auth import JWTAuthMiddlewareStack
 
 application = ProtocolTypeRouter(
@@ -26,7 +27,9 @@ application = ProtocolTypeRouter(
         "http": django_asgi_app,
         "websocket": JWTAuthMiddlewareStack(
             URLRouter(
-                chat.routing.websocket_urlpatterns + activity.routing.websocket_urlpatterns
+                chat.routing.websocket_urlpatterns
+                + activity.routing.websocket_urlpatterns
+                + analytics.routing.websocket_urlpatterns
             )
         ),
     }

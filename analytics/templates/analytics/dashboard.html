@@ -1,0 +1,138 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'analytics/css/dashboard.css' %}">
+{% endblock %}
+
+{% block breadcrumbs %}
+<ol class="breadcrumb">
+  <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">{% trans "Home" %}</a></li>
+  <li class="breadcrumb-item active">{% trans "Analytics" %}</li>
+</ol>
+{% endblock %}
+
+{% block content_title %}{% trans "Executive Analytics Dashboard" %}{% endblock %}
+
+{% block content %}
+<div id="duo-analytics-app" class="analytics-platform" data-theme="dark">
+  <header class="analytics-header">
+    <div>
+      <p class="analytics-eyebrow">Duo Business Intelligence</p>
+      <h1 class="analytics-title">Executive Command Center</h1>
+      <p class="analytics-subtitle">Real-time insights across revenue, users, engagement, and platform health.</p>
+    </div>
+    <div class="analytics-header-actions">
+      <button type="button" class="analytics-btn analytics-btn-outline" id="theme-toggle">Light mode</button>
+      <a href="/api/analytics/exports/?type=executive&format=pdf" class="analytics-btn analytics-btn-primary" target="_blank">Export PDF</a>
+    </div>
+  </header>
+
+  <section class="analytics-kpi-grid" id="kpi-grid">
+    <article class="analytics-kpi-card featured">
+      <span class="kpi-label">Today's Revenue</span>
+      <strong class="kpi-value" data-kpi="revenue.today">{{ dashboard_data.revenue.today }}</strong>
+      <span class="kpi-delta positive">{{ dashboard_data.revenue.today_change_pct }}% vs yesterday</span>
+    </article>
+    <article class="analytics-kpi-card">
+      <span class="kpi-label">MRR</span>
+      <strong class="kpi-value">{{ dashboard_data.revenue.mrr }}</strong>
+    </article>
+    <article class="analytics-kpi-card">
+      <span class="kpi-label">ARR</span>
+      <strong class="kpi-value">{{ dashboard_data.revenue.arr }}</strong>
+    </article>
+    <article class="analytics-kpi-card">
+      <span class="kpi-label">Total Users</span>
+      <strong class="kpi-value">{{ dashboard_data.users.total }}</strong>
+    </article>
+    <article class="analytics-kpi-card">
+      <span class="kpi-label">Online Now</span>
+      <strong class="kpi-value live-pulse" data-kpi="users.online">{{ dashboard_data.users.online }}</strong>
+    </article>
+    <article class="analytics-kpi-card">
+      <span class="kpi-label">DAU / WAU / MAU</span>
+      <strong class="kpi-value">{{ dashboard_data.users.dau }} / {{ dashboard_data.users.wau }} / {{ dashboard_data.users.mau }}</strong>
+    </article>
+    <article class="analytics-kpi-card">
+      <span class="kpi-label">Premium Users</span>
+      <strong class="kpi-value">{{ dashboard_data.users.premium }}</strong>
+    </article>
+    <article class="analytics-kpi-card">
+      <span class="kpi-label">Retention Rate</span>
+      <strong class="kpi-value">{{ dashboard_data.users.retention_rate }}%</strong>
+    </article>
+    <article class="analytics-kpi-card">
+      <span class="kpi-label">Churn Rate</span>
+      <strong class="kpi-value">{{ dashboard_data.users.churn_rate }}%</strong>
+    </article>
+    <article class="analytics-kpi-card">
+      <span class="kpi-label">LTV / ARPU</span>
+      <strong class="kpi-value">{{ dashboard_data.users.ltv }} / {{ dashboard_data.users.arpu }}</strong>
+    </article>
+    <article class="analytics-kpi-card">
+      <span class="kpi-label">Total Matches</span>
+      <strong class="kpi-value">{{ dashboard_data.engagement.total_matches }}</strong>
+    </article>
+    <article class="analytics-kpi-card">
+      <span class="kpi-label">Total Messages</span>
+      <strong class="kpi-value">{{ dashboard_data.engagement.total_messages }}</strong>
+    </article>
+  </section>
+
+  <section class="analytics-charts-grid">
+    <article class="analytics-panel">
+      <div class="panel-header">
+        <h2>Revenue Trend</h2>
+        <span class="panel-badge">30 days</span>
+      </div>
+      <canvas id="revenue-chart" height="120"></canvas>
+    </article>
+    <article class="analytics-panel">
+      <div class="panel-header">
+        <h2>User Activity</h2>
+        <span class="panel-badge live">Live</span>
+      </div>
+      <canvas id="activity-chart" height="120"></canvas>
+    </article>
+    <article class="analytics-panel">
+      <div class="panel-header">
+        <h2>Engagement Funnel</h2>
+      </div>
+      <canvas id="funnel-chart" height="120"></canvas>
+    </article>
+    <article class="analytics-panel">
+      <div class="panel-header">
+        <h2>System Health</h2>
+        <span class="panel-badge status-{{ dashboard_data.system.status }}">{{ dashboard_data.system.status }}</span>
+      </div>
+      <ul class="system-metrics">
+        <li><span>API Response</span><strong>{{ dashboard_data.system.api_response_ms }} ms</strong></li>
+        <li><span>Database</span><strong>{% if dashboard_data.system.database %}Healthy{% else %}Down{% endif %}</strong></li>
+        <li><span>Verification Queue</span><strong>{{ dashboard_data.operations.verification_queue }}</strong></li>
+        <li><span>Failed Payments</span><strong>{{ dashboard_data.revenue.failed_payments }}</strong></li>
+      </ul>
+    </article>
+  </section>
+
+  <section class="analytics-modules">
+    <a href="/api/analytics/revenue/" class="module-card" target="_blank">Revenue Analytics</a>
+    <a href="/api/analytics/users/" class="module-card" target="_blank">User Analytics</a>
+    <a href="/api/analytics/matching/" class="module-card" target="_blank">Match Analytics</a>
+    <a href="/api/analytics/chat/" class="module-card" target="_blank">Chat Analytics</a>
+    <a href="/api/analytics/funnel/" class="module-card" target="_blank">Funnel</a>
+    <a href="/api/analytics/retention/" class="module-card" target="_blank">Retention</a>
+    <a href="/api/analytics/forecast/" class="module-card" target="_blank">AI Forecast</a>
+    <a href="/api/analytics/security/" class="module-card" target="_blank">Security</a>
+    <a href="/api/analytics/maps/" class="module-card" target="_blank">Map Analytics</a>
+    <a href="/api/analytics/system/" class="module-card" target="_blank">System</a>
+  </section>
+</div>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{% static 'analytics/js/dashboard.js' %}"></script>
+{% endblock %}
