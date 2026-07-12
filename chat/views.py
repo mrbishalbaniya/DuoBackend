@@ -154,7 +154,7 @@ class MessageListView(APIView):
         return Response({
             'results': payload,
             'has_more': has_more,
-            'next_before': messages[0]['id'] if has_more and messages else None,
+            'next_before': payload[0]['id'] if has_more and payload else None,
         })
 
     @extend_schema(

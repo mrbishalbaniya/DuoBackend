@@ -40,6 +40,9 @@ class IntegrationSettings:
     esewa_status_url: str
     esewa_success_url: str
     esewa_failure_url: str
+    esewa_mobile_client_id: str
+    esewa_mobile_secret_key: str
+    esewa_mobile_live: bool
     cloudinary_cloud_name: str
     cloudinary_api_key: str
     cloudinary_api_secret: str
@@ -205,6 +208,19 @@ def get_integration_settings() -> IntegrationSettings:
         ),
         esewa_success_url=_pick_str(db("esewa_success_url"), settings.ESEWA_SUCCESS_URL),
         esewa_failure_url=_pick_str(db("esewa_failure_url"), settings.ESEWA_FAILURE_URL),
+        esewa_mobile_client_id=_pick_str(
+            db("esewa_mobile_client_id"),
+            settings.ESEWA_MOBILE_CLIENT_ID,
+        ),
+        esewa_mobile_secret_key=_pick_str(
+            db("esewa_mobile_secret_key"),
+            settings.ESEWA_MOBILE_SECRET_KEY,
+        ),
+        esewa_mobile_live=bool(
+            db("esewa_mobile_live")
+            if db("esewa_mobile_live") is not None
+            else settings.ESEWA_MOBILE_LIVE
+        ),
         cloudinary_cloud_name=_pick_str(
             db("cloudinary_cloud_name"), settings.CLOUDINARY_CLOUD_NAME
         ),

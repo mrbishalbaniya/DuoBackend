@@ -27,10 +27,21 @@ class EsewaFormSerializer(serializers.Serializer):
     signature = serializers.CharField()
 
 
+class EsewaMobileSdkSerializer(serializers.Serializer):
+    environment = serializers.CharField()
+    client_id = serializers.CharField()
+    secret_id = serializers.CharField()
+    product_id = serializers.CharField()
+    product_name = serializers.CharField()
+    product_price = serializers.CharField()
+    callback_url = serializers.URLField(allow_blank=True)
+
+
 class InitiatePaymentResponseSerializer(serializers.Serializer):
     payment_url = serializers.URLField()
     transaction_uuid = serializers.CharField()
     form = EsewaFormSerializer()
+    mobile_sdk = EsewaMobileSdkSerializer(required=False)
 
 
 class SubscriptionStatusSerializer(serializers.Serializer):

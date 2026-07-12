@@ -75,6 +75,70 @@ def decode_callback_payload(encoded_data: str) -> dict[str, Any]:
     return json.loads(decoded)
 
 
+def _mobile_transaction_base_url(*, live: bool = False) -> str:
+    return "https://esewa.com.np" if live else "https://rc.esewa.com.np"
+
+
+def check_mobile_transaction_by_ref_id(
+    ref_id: str,
+    *,
+    client_id: str,
+    secret_key: str,
+    live: bool = False,
+) -> dict[str, Any]:
+    query = urlencode({"txnRefId": ref_id})
+    url = f"{_mobile_transaction_base_url(live=live)}/mobile/transaction?{query}"
+    request = Request(
+        url,
+        headers={
+            "merchantId": client_id,
+            "merchantSecret": secret_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+    )
+    with urlopen(request, timeout=15) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if isinstance(payload, list) and payload:
+        return payload[0]
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def check_mobile_transaction_by_product(
+    product_id: str,
+    amount: Decimal | str | float,
+    *,
+    client_id: str,
+    secret_key: str,
+    live: bool = False,
+) -> dict[str, Any]:
+    query = urlencode({"productId": product_id, "amount": _format_amount(amount)})
+    url = f"{_mobile_transaction_base_url(live=live)}/mobile/transaction?{query}"
+    request = Request(
+        url,
+        headers={
+            "merchantId": client_id,
+            "merchantSecret": secret_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+    )
+    with urlopen(request, timeout=15) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if isinstance(payload, list) and payload:
+        return payload[0]
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def mobile_transaction_is_complete(status_data: dict[str, Any]) -> bool:
+    details = status_data.get("transactionDetails") or {}
+    return str(details.get("status", "")).upper() == "COMPLETE"
+
+
 def check_transaction_status(
     product_code: str,
     total_amount: Decimal | str | float,

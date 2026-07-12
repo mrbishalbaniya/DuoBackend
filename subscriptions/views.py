@@ -10,7 +10,14 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .esewa import check_transaction_status, decode_callback_payload, verify_response_signature
+from .esewa import (
+    check_mobile_transaction_by_product,
+    check_mobile_transaction_by_ref_id,
+    check_transaction_status,
+    decode_callback_payload,
+    mobile_transaction_is_complete,
+    verify_response_signature,
+)
 from .models import SubscriptionPayment, WalletTopUp
 from .serializers import (
     InitiatePaymentResponseSerializer,
@@ -131,13 +138,27 @@ class WalletTopUpInitiateView(APIView):
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         cfg = get_integration_settings()
-        return Response(
-            {
-                "payment_url": cfg.esewa_form_url,
-                "transaction_uuid": topup.transaction_uuid,
-                "form": form_data,
+        mobile_client_id = cfg.esewa_mobile_client_id
+        mobile_secret_key = cfg.esewa_mobile_secret_key
+        mobile_environment = "live" if cfg.esewa_mobile_live else "test"
+
+        response_payload = {
+            "payment_url": cfg.esewa_form_url,
+            "transaction_uuid": topup.transaction_uuid,
+            "form": form_data,
+        }
+        if mobile_client_id and mobile_secret_key:
+            response_payload["mobile_sdk"] = {
+                "environment": mobile_environment,
+                "client_id": mobile_client_id,
+                "secret_id": mobile_secret_key,
+                "product_id": topup.transaction_uuid,
+                "product_name": "Duo Wallet Top-up",
+                "product_price": form_data["total_amount"],
+                "callback_url": cfg.esewa_success_url,
             }
-        )
+
+        return Response(response_payload)
 
 
 class WalletPurchaseView(APIView):
@@ -185,6 +206,7 @@ class VerifyPaymentView(APIView):
     )
     def post(self, request):
         transaction_uuid = request.data.get("transaction_uuid")
+        ref_id = str(request.data.get("ref_id") or "").strip()
         if not transaction_uuid:
             return Response(
                 {"detail": "transaction_uuid is required."},
@@ -205,6 +227,38 @@ class VerifyPaymentView(APIView):
                 return Response({"status": "COMPLETE", "balance": wallet["balance"]})
 
             cfg = get_integration_settings()
+            if ref_id and cfg.esewa_mobile_client_id and cfg.esewa_mobile_secret_key:
+                mobile_status = check_mobile_transaction_by_ref_id(
+                    ref_id,
+                    client_id=cfg.esewa_mobile_client_id,
+                    secret_key=cfg.esewa_mobile_secret_key,
+                    live=cfg.esewa_mobile_live,
+                )
+                if mobile_transaction_is_complete(mobile_status):
+                    details = mobile_status.get("transactionDetails") or {}
+                    activate_topup(
+                        topup,
+                        ref_id=str(details.get("referenceId") or ref_id),
+                    )
+                    wallet = get_wallet_summary(request.user, limit=0)
+                    return Response({"status": "COMPLETE", "balance": wallet["balance"]})
+
+                mobile_status = check_mobile_transaction_by_product(
+                    topup.transaction_uuid,
+                    topup.total_amount,
+                    client_id=cfg.esewa_mobile_client_id,
+                    secret_key=cfg.esewa_mobile_secret_key,
+                    live=cfg.esewa_mobile_live,
+                )
+                if mobile_transaction_is_complete(mobile_status):
+                    details = mobile_status.get("transactionDetails") or {}
+                    activate_topup(
+                        topup,
+                        ref_id=str(details.get("referenceId") or ref_id),
+                    )
+                    wallet = get_wallet_summary(request.user, limit=0)
+                    return Response({"status": "COMPLETE", "balance": wallet["balance"]})
+
             status_data = check_transaction_status(
                 product_code=cfg.esewa_product_code,
                 total_amount=topup.total_amount,

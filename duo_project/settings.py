@@ -307,6 +307,15 @@ ESEWA_FAILURE_URL = config(
     "ESEWA_FAILURE_URL",
     default=f"{_backend_public_url}/api/subscriptions/esewa/failure/",
 )
+ESEWA_MOBILE_CLIENT_ID = env(
+    "ESEWA_MOBILE_CLIENT_ID",
+    default="JB0BBQ4aD0UqIThFJwAKBgAXEUkEGQUBBAwdOgABHD4DChwUAB0R" if DEBUG else "",
+).strip()
+ESEWA_MOBILE_SECRET_KEY = env(
+    "ESEWA_MOBILE_SECRET_KEY",
+    default="BhwIWQQADhIYSxILExMcAgFXFhcOBwAKBgAXEQ==" if DEBUG else "",
+).strip()
+ESEWA_MOBILE_LIVE = config("ESEWA_MOBILE_LIVE", default=not DEBUG, cast=bool)
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = config("EMAIL_HOST", default="smtp-relay.brevo.com")
