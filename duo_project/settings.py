@@ -292,13 +292,20 @@ ESEWA_STATUS_URL = config(
     "ESEWA_STATUS_URL",
     default="https://rc.esewa.com.np/api/epay/transaction/status/",
 )
+_render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+_backend_public_url = (
+    f"https://{_render_host}".rstrip("/")
+    if _render_host
+    else config("BACKEND_PUBLIC_URL", default="https://duobackend.onrender.com").rstrip("/")
+)
+BACKEND_PUBLIC_URL = _backend_public_url
 ESEWA_SUCCESS_URL = config(
     "ESEWA_SUCCESS_URL",
-    default="http://localhost:8000/api/subscriptions/esewa/success/",
+    default=f"{_backend_public_url}/api/subscriptions/esewa/success/",
 )
 ESEWA_FAILURE_URL = config(
     "ESEWA_FAILURE_URL",
-    default="http://localhost:8000/api/subscriptions/esewa/failure/",
+    default=f"{_backend_public_url}/api/subscriptions/esewa/failure/",
 )
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"

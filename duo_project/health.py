@@ -1,5 +1,6 @@
 from django.db import connection
 from django.http import JsonResponse
+import os
 
 
 def health_check(_request):
@@ -12,4 +13,13 @@ def health_check(_request):
         db_ok = False
 
     status_code = 200 if db_ok else 503
-    return JsonResponse({"status": "ok" if db_ok else "degraded", "database": db_ok}, status=status_code)
+    commit = os.environ.get("RENDER_GIT_COMMIT", "")
+    return JsonResponse(
+        {
+            "status": "ok" if db_ok else "degraded",
+            "database": db_ok,
+            "api_version": commit[:8] if commit else "local",
+            "features": {"wallet": True},
+        },
+        status=status_code,
+    )

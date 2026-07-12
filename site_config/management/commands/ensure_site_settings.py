@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.core.management.base import BaseCommand
+import os
 
 from email_service.credentials import is_placeholder
 from duo_project.runtime_config import invalidate_integration_cache
@@ -65,6 +66,32 @@ class Command(BaseCommand):
         if env_from_name and not obj.email_from_name:
             obj.email_from_name = env_from_name
             updated.append("email_from_name")
+
+        render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+        backend_base = (
+            f"https://{render_host}".rstrip("/")
+            if render_host
+            else getattr(settings, "BACKEND_PUBLIC_URL", "https://duobackend.onrender.com").rstrip("/")
+        )
+        default_success = f"{backend_base}/api/subscriptions/esewa/success/"
+        default_failure = f"{backend_base}/api/subscriptions/esewa/failure/"
+
+        env_esewa_product = getattr(settings, "ESEWA_PRODUCT_CODE", "") or ""
+        if env_esewa_product and not obj.esewa_product_code:
+            obj.esewa_product_code = env_esewa_product.strip()
+            updated.append("esewa_product_code")
+
+        env_esewa_secret = getattr(settings, "ESEWA_SECRET_KEY", "") or ""
+        if env_esewa_secret and not obj.esewa_secret_key and not is_placeholder(env_esewa_secret):
+            obj.esewa_secret_key = encrypt_secret(env_esewa_secret.strip())
+            updated.append("esewa_secret_key")
+
+        if not obj.esewa_success_url:
+            obj.esewa_success_url = default_success
+            updated.append("esewa_success_url")
+        if not obj.esewa_failure_url:
+            obj.esewa_failure_url = default_failure
+            updated.append("esewa_failure_url")
 
         env_openweather = getattr(settings, "OPENWEATHER_API_KEY", "") or ""
         if env_openweather and not obj.openweather_api_key and not is_placeholder(env_openweather):
