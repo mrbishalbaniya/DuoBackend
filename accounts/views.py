@@ -131,7 +131,15 @@ class GoogleOAuthCallbackView(APIView):
     def get(self, request):
         error = request.GET.get("error")
         code = request.GET.get("code")
+        state = request.GET.get("state", "")
         login_error_url = f"{settings.FRONTEND_URL}/login?error=google_auth"
+
+        if state == "duo_mobile":
+            if error or not code:
+                params = urlencode({"error": error or "access_denied"})
+            else:
+                params = urlencode({"code": code})
+            return redirect(f"com.duo.duo_mobile://oauth2redirect?{params}")
 
         if error or not code:
             return redirect(login_error_url)
