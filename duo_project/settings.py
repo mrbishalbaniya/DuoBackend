@@ -163,7 +163,7 @@ CHANNEL_LAYERS = {
 _redis_url = env("REDIS_URL").strip().strip('"').strip("'")
 REDIS_URL = _redis_url
 _redis_cache_options: dict = {}
-_redis_ssl_verify = config("REDIS_SSL_VERIFY", default=not DEBUG, cast=bool)
+_redis_ssl_verify = config("REDIS_SSL_VERIFY", default=False, cast=bool)
 if _redis_url.startswith("rediss://"):
     import ssl
 
@@ -172,11 +172,24 @@ if _redis_url.startswith("rediss://"):
     )
 
 if _redis_url:
+    _channel_hosts: list = []
+    if _redis_url.startswith("rediss://"):
+        _channel_hosts.append(
+            {
+                "address": _redis_url,
+                "ssl_cert_reqs": (
+                    ssl.CERT_REQUIRED if _redis_ssl_verify else None
+                ),
+            }
+        )
+    else:
+        _channel_hosts.append(_redis_url)
+
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
-                "hosts": [_redis_url],
+                "hosts": _channel_hosts,
                 "capacity": 1500,
                 "expiry": 60,
             },

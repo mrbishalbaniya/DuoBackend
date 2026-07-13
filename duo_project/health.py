@@ -13,6 +13,25 @@ def _update_service_ready() -> bool:
         return False
 
 
+def _cache_ping() -> bool:
+    try:
+        from django.core.cache import cache
+
+        key = "duo:health:ping"
+        cache.set(key, "1", 5)
+        return cache.get(key) == "1"
+    except Exception:
+        return False
+
+
+def _auth_tables_ready() -> bool:
+    try:
+        tables = set(connection.introspection.table_names())
+        return "token_blacklist_outstandingtoken" in tables
+    except Exception:
+        return False
+
+
 def health_check(_request):
     """Public health endpoint for load balancers and Render."""
     db_ok = True
@@ -31,6 +50,8 @@ def health_check(_request):
         wallet_routes = False
 
     update_ready = _update_service_ready() if db_ok else False
+    cache_ok = _cache_ping() if db_ok else False
+    auth_ready = _auth_tables_ready() if db_ok else False
 
     try:
         from duo_project.cache.health import cache_health
@@ -39,6 +60,8 @@ def health_check(_request):
     except Exception:
         cache_info = {"backend": "unknown", "redis_configured": False}
 
+    cache_info["ping_ok"] = cache_ok
+
     status_code = 200 if db_ok else 503
     commit = os.environ.get("RENDER_GIT_COMMIT", "")
     return JsonResponse(
@@ -46,6 +69,7 @@ def health_check(_request):
             "status": "ok" if db_ok else "degraded",
             "database": db_ok,
             "cache": cache_info,
+            "auth_ready": auth_ready,
             "api_version": commit[:8] if commit else "local",
             "features": {
                 "wallet": wallet_routes,

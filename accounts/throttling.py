@@ -1,13 +1,13 @@
-from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+from duo_project.throttling import FailOpenAnonRateThrottle, FailOpenUserRateThrottle
 
 
-class AuthRateThrottle(AnonRateThrottle):
+class AuthRateThrottle(FailOpenAnonRateThrottle):
     scope = "auth"
 
 
-class UploadRateThrottle(UserRateThrottle):
+class UploadRateThrottle(FailOpenUserRateThrottle):
     scope = "upload"
 
 
-class SwipeRateThrottle(UserRateThrottle):
+class SwipeRateThrottle(FailOpenUserRateThrottle):
     scope = "swipe"

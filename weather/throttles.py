@@ -1,5 +1,5 @@
-from rest_framework.throttling import UserRateThrottle
+from duo_project.throttling import FailOpenUserRateThrottle
 
 
-class WeatherRateThrottle(UserRateThrottle):
+class WeatherRateThrottle(FailOpenUserRateThrottle):
     scope = "weather"

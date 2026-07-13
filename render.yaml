@@ -43,6 +43,8 @@ services:
           type: redis
           name: duo-redis
           property: connectionString
+      - key: REDIS_SSL_VERIFY
+        value: "false"
       - key: CELERY_ENABLED
         value: "true"
       - key: CELERY_TASK_EAGER

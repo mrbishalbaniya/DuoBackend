@@ -1,5 +1,5 @@
-from rest_framework.throttling import AnonRateThrottle
+from duo_project.throttling import FailOpenAnonRateThrottle
 
 
-class VerificationHandoffThrottle(AnonRateThrottle):
+class VerificationHandoffThrottle(FailOpenAnonRateThrottle):
     scope = "verification_handoff"

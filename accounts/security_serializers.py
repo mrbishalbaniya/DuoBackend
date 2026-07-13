@@ -3,6 +3,10 @@ from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+import logging
+
+logger = logging.getLogger("duo.auth")
+
 
 class DuoTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
@@ -17,7 +21,13 @@ class DuoTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         from security.services import security_service
 
-        if security_service.login_requires_2fa(user):
+        try:
+            requires_2fa = security_service.login_requires_2fa(user)
+        except Exception:
+            logger.exception("login_requires_2fa_failed user_id=%s", user.id)
+            requires_2fa = False
+
+        if requires_2fa:
             challenge = security_service.create_login_challenge(user)
             tfa = security_service.get_or_create_2fa(user)
             raise serializers.ValidationError({
@@ -33,12 +43,15 @@ class DuoTokenObtainPairSerializer(TokenObtainPairSerializer):
             "access": str(refresh.access_token),
         }
         if request is not None:
-            security_service.record_login(
-                user,
-                request,
-                success=True,
-                refresh_token=data["refresh"],
-            )
+            try:
+                security_service.record_login(
+                    user,
+                    request,
+                    success=True,
+                    refresh_token=data["refresh"],
+                )
+            except Exception:
+                logger.exception("record_login_failed user_id=%s", user.id)
         return data
 
     def _resolve_user(self, attrs):
