@@ -2,6 +2,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from .models import Conversation, Message
 from .services import build_reactions_summary
+from accounts.models import Profile
 from accounts.serializers import ProfileSerializer
 
 
@@ -121,7 +122,13 @@ class ConversationSerializer(serializers.ModelSerializer):
     def get_other_user_profile(self, obj):
         request_user = self.context.get('request').user
         other_user = obj.match.get_other_user(request_user)
-        return ProfileSerializer(other_user.profile).data
+        profile, _ = Profile.objects.get_or_create(
+            user=other_user,
+            defaults={
+                "full_name": (other_user.get_full_name() or other_user.username or "Duo member").strip(),
+            },
+        )
+        return ProfileSerializer(profile, context=self.context).data
 
     def get_other_user_nickname(self, obj):
         prefs = getattr(obj, "user_preferences", None)

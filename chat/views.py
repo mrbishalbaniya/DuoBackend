@@ -40,6 +40,7 @@ from .services import (
     conversation_is_blocked,
     create_security_system_message,
     delete_message_for_user,
+    ensure_conversations_for_user,
     infer_message_type,
     mark_messages_delivered,
     mark_messages_read,
@@ -111,6 +112,10 @@ class ConversationListView(APIView):
         responses={200: ConversationSerializer(many=True)},
     )
     def get(self, request):
+        created = ensure_conversations_for_user(request.user)
+        if created:
+            invalidate_user_caches(request.user.id, reason="conversation_repair")
+
         show_archived = request.query_params.get('archived') == 'true'
         unread_only = request.query_params.get('unread') == 'true'
         version = get_user_cache_version(request.user.id)

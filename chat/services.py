@@ -13,6 +13,20 @@ MAX_MESSAGE_LENGTH = 5000
 from .models import Conversation, ConversationPreference, Message, MessageReaction, UserBlock
 
 
+def ensure_conversations_for_user(user: User) -> int:
+    """Create missing chat threads for existing mutual matches."""
+    from django.db.models import Q
+    from matching.models import Match
+
+    matches = Match.objects.filter(Q(user1=user) | Q(user2=user)).only("id")
+    created = 0
+    for match in matches:
+        _, was_created = Conversation.objects.get_or_create(match_id=match.id)
+        if was_created:
+            created += 1
+    return created
+
+
 SECURITY_EVENT_SCREENSHOT = "SCREENSHOT_TAKEN"
 SECURITY_EVENT_RECORDING_STARTED = "SCREEN_RECORDING_STARTED"
 SECURITY_EVENT_RECORDING_STOPPED = "SCREEN_RECORDING_STOPPED"

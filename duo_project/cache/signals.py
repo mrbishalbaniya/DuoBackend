@@ -9,7 +9,7 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 
 from accounts.models import Profile
-from chat.models import ConversationPreference, Message, UserBlock
+from chat.models import Conversation, ConversationPreference, Message, UserBlock
 from matching.models import Match, ProfileVisit, Swipe
 from security.models import SecurityEvent
 from photo_verification.constants import VerificationStatus
@@ -58,6 +58,7 @@ def user_block_cache_invalidate(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Match)
 def match_cache_invalidate(sender, instance, created, **kwargs):
+    Conversation.objects.get_or_create(match=instance)
     invalidate_match_users(instance.user1_id, instance.user2_id, reason="match")
 
 

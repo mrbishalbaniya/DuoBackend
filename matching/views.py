@@ -189,7 +189,7 @@ class UnlikeView(APIView):
             communication_insight=f"{p1.full_name or 'User 1'} values directness and logic, while {p2.full_name or 'User 2'} prioritizes emotional resonance. This balanced pairing often results in highly effective problem-solving in partnerships.",
         )
         # Auto-create conversation for the match
-        Conversation.objects.create(match=match)
+        Conversation.objects.get_or_create(match=match)
         return match
 
 
