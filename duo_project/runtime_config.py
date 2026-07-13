@@ -9,7 +9,7 @@ from django.core.cache import cache
 
 from duo_project.secret_fields import decrypt_secret
 
-CACHE_KEY = "site_config:integration:v1"
+CACHE_KEY = "site_config:integration:v2"
 CACHE_TTL_SECONDS = 300
 
 
@@ -62,6 +62,12 @@ class IntegrationSettings:
     firebase_ios_app_id: str
     fcm_vapid_key: str
     firebase_service_account_json: str
+    webrtc_stun_urls: tuple[str, ...]
+    webrtc_turn_url: str
+    webrtc_turn_username: str
+    webrtc_turn_credential: str
+    webrtc_turn_secret: str
+    webrtc_turn_ttl: int
 
 
 def invalidate_integration_cache() -> None:
@@ -142,6 +148,14 @@ def get_integration_settings() -> IntegrationSettings:
     for uri in auto_allowed:
         allowed_set.add(uri.rstrip("/"))
     allowed = tuple(sorted(allowed_set))
+
+    stun_db = db("webrtc_stun_urls")
+    if stun_db is not None and str(stun_db).strip():
+        webrtc_stun_urls = tuple(
+            url.strip() for url in str(stun_db).split(",") if url.strip()
+        )
+    else:
+        webrtc_stun_urls = tuple(getattr(settings, "WEBRTC_STUN_URLS", ()))
 
     cfg = IntegrationSettings(
         google_client_id=_pick_str(db("google_client_id"), settings.GOOGLE_OAUTH_CLIENT_ID),
@@ -283,6 +297,23 @@ def get_integration_settings() -> IntegrationSettings:
                 db("firebase_service_account_json"),
                 getattr(settings, "FIREBASE_SERVICE_ACCOUNT_JSON", ""),
             )
+        ),
+        webrtc_stun_urls=webrtc_stun_urls,
+        webrtc_turn_url=_pick_str(db("webrtc_turn_url"), getattr(settings, "WEBRTC_TURN_URL", "")),
+        webrtc_turn_username=_pick_str(
+            db("webrtc_turn_username"),
+            getattr(settings, "WEBRTC_TURN_USERNAME", ""),
+        ),
+        webrtc_turn_credential=decrypt_secret(
+            _pick_str(db("webrtc_turn_credential"), getattr(settings, "WEBRTC_TURN_CREDENTIAL", ""))
+        ),
+        webrtc_turn_secret=decrypt_secret(
+            _pick_str(db("webrtc_turn_secret"), getattr(settings, "WEBRTC_TURN_SECRET", ""))
+        ),
+        webrtc_turn_ttl=_pick_int(
+            db("webrtc_turn_ttl"),
+            getattr(settings, "WEBRTC_TURN_TTL", 86400),
+            86400,
         ),
     )
 

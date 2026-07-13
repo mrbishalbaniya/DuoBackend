@@ -134,6 +134,35 @@ class Command(BaseCommand):
             obj.email_use_tls = getattr(settings, "EMAIL_USE_TLS", True)
             updated.append("email_use_tls")
 
+        env_stun_urls = getattr(settings, "WEBRTC_STUN_URLS", None) or []
+        if env_stun_urls and not (obj.webrtc_stun_urls or "").strip():
+            obj.webrtc_stun_urls = ",".join(url.strip() for url in env_stun_urls if url.strip())
+            updated.append("webrtc_stun_urls")
+
+        env_turn_url = getattr(settings, "WEBRTC_TURN_URL", "") or ""
+        if env_turn_url and not (obj.webrtc_turn_url or "").strip():
+            obj.webrtc_turn_url = env_turn_url.strip()
+            updated.append("webrtc_turn_url")
+
+        env_turn_user = getattr(settings, "WEBRTC_TURN_USERNAME", "") or ""
+        if env_turn_user and not (obj.webrtc_turn_username or "").strip():
+            obj.webrtc_turn_username = env_turn_user.strip()
+            updated.append("webrtc_turn_username")
+
+        env_turn_cred = getattr(settings, "WEBRTC_TURN_CREDENTIAL", "") or ""
+        if env_turn_cred and not obj.webrtc_turn_credential and not is_placeholder(env_turn_cred):
+            obj.webrtc_turn_credential = encrypt_secret(env_turn_cred.strip())
+            updated.append("webrtc_turn_credential")
+
+        env_turn_secret = getattr(settings, "WEBRTC_TURN_SECRET", "") or ""
+        if env_turn_secret and not obj.webrtc_turn_secret and not is_placeholder(env_turn_secret):
+            obj.webrtc_turn_secret = encrypt_secret(env_turn_secret.strip())
+            updated.append("webrtc_turn_secret")
+
+        if not obj.webrtc_turn_ttl:
+            obj.webrtc_turn_ttl = getattr(settings, "WEBRTC_TURN_TTL", 86400)
+            updated.append("webrtc_turn_ttl")
+
         obj.save()
         invalidate_integration_cache()
 

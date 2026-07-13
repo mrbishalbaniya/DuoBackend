@@ -31,6 +31,8 @@ class SiteSettingsAdmin(admin.ModelAdmin):
         "email_relay_secret_status",
         "email_host_password_status",
         "esewa_secret_key_status",
+        "webrtc_turn_credential_status",
+        "webrtc_turn_secret_status",
         "cloudinary_api_secret_status",
         "firebase_service_account_json_status",
         "openweather_api_key_status",
@@ -50,6 +52,25 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                 "description": (
                     "Configure Google OAuth for web and mobile login. "
                     "Values here override environment variables when set."
+                ),
+            },
+        ),
+        (
+            "WebRTC calls (STUN/TURN)",
+            {
+                "fields": (
+                    "webrtc_stun_urls",
+                    "webrtc_turn_url",
+                    "webrtc_turn_username",
+                    "webrtc_turn_credential_status",
+                    "webrtc_turn_credential",
+                    "webrtc_turn_secret_status",
+                    "webrtc_turn_secret",
+                    "webrtc_turn_ttl",
+                ),
+                "description": (
+                    "ICE servers for voice and video calls. Google STUN is free and works for most "
+                    "peer-to-peer connections. Add a TURN relay when users are behind strict NAT/firewalls."
                 ),
             },
         ),
@@ -217,6 +238,14 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     @admin.display(description="eSewa secret key")
     def esewa_secret_key_status(self, obj):
         return _secret_status_html(obj.esewa_secret_key)
+
+    @admin.display(description="TURN credential")
+    def webrtc_turn_credential_status(self, obj):
+        return _secret_status_html(obj.webrtc_turn_credential)
+
+    @admin.display(description="TURN shared secret")
+    def webrtc_turn_secret_status(self, obj):
+        return _secret_status_html(obj.webrtc_turn_secret)
 
     @admin.display(description="Cloudinary API secret")
     def cloudinary_api_secret_status(self, obj):

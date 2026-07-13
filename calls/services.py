@@ -7,7 +7,6 @@ import logging
 import time
 from datetime import timedelta
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.utils import timezone
@@ -17,6 +16,7 @@ from chat.models import Conversation
 from chat.services import conversation_is_blocked
 from duo_project.realtime.broadcast import broadcast_to_user
 from duo_project.realtime.groups import call_room
+from duo_project.runtime_config import get_integration_settings
 
 logger = logging.getLogger("duo.calls")
 
@@ -32,25 +32,26 @@ ACTIVE_CALL_STATUSES = {
 
 def get_ice_servers() -> list[dict]:
     """Return STUN/TURN ICE server configuration for WebRTC clients."""
+    cfg = get_integration_settings()
     servers: list[dict] = []
 
-    stun_urls = getattr(settings, "WEBRTC_STUN_URLS", None) or [
+    stun_urls = list(cfg.webrtc_stun_urls) or [
         "stun:stun.l.google.com:19302",
         "stun:stun1.l.google.com:19302",
     ]
     for url in stun_urls:
         servers.append({"urls": url})
 
-    turn_url = getattr(settings, "WEBRTC_TURN_URL", "").strip()
+    turn_url = (cfg.webrtc_turn_url or "").strip()
     if not turn_url:
         return servers
 
-    turn_username = getattr(settings, "WEBRTC_TURN_USERNAME", "").strip()
-    turn_credential = getattr(settings, "WEBRTC_TURN_CREDENTIAL", "").strip()
-    turn_secret = getattr(settings, "WEBRTC_TURN_SECRET", "").strip()
+    turn_username = (cfg.webrtc_turn_username or "").strip()
+    turn_credential = (cfg.webrtc_turn_credential or "").strip()
+    turn_secret = (cfg.webrtc_turn_secret or "").strip()
 
     if turn_secret:
-        expiry = int(time.time()) + int(getattr(settings, "WEBRTC_TURN_TTL", 86400))
+        expiry = int(time.time()) + int(cfg.webrtc_turn_ttl or 86400)
         turn_username = str(expiry)
         turn_credential = base64.b64encode(
             hmac.new(turn_secret.encode("utf-8"), turn_username.encode("utf-8"), hashlib.sha1).digest()

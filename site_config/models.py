@@ -27,6 +27,44 @@ class SiteSettings(models.Model):
         help_text="Comma-separated redirect URIs allowed for token exchange (include web and mobile callbacks).",
     )
 
+    # WebRTC voice/video calls (STUN/TURN for peer discovery)
+    webrtc_stun_urls = models.TextField(
+        blank=True,
+        help_text=(
+            "Comma-separated STUN server URLs for WebRTC ICE. "
+            "Google defaults: stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302"
+        ),
+    )
+    webrtc_turn_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Optional TURN relay URL (turn: or turns:). Leave blank to use STUN only.",
+    )
+    webrtc_turn_username = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Static TURN username. Ignored when TURN shared secret is set.",
+    )
+    webrtc_turn_credential = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Static TURN password. Leave blank when saving to keep the current value.",
+    )
+    webrtc_turn_secret = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text=(
+            "coturn shared secret for time-limited credentials. "
+            "Leave blank when saving to keep the current value."
+        ),
+    )
+    webrtc_turn_ttl = models.PositiveIntegerField(
+        default=86400,
+        blank=True,
+        null=True,
+        help_text="TURN credential lifetime in seconds when using shared secret (default 86400).",
+    )
+
     # Email delivery (Nodemailer-compatible SMTP — https://nodemailer.com/)
     EMAIL_DELIVERY_NODEMAILER = "nodemailer"
     EMAIL_DELIVERY_SMTP = "smtp"

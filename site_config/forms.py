@@ -18,6 +18,8 @@ SECRET_FIELDS = (
     "cloudinary_api_secret",
     "openweather_api_key",
     "firebase_service_account_json",
+    "webrtc_turn_credential",
+    "webrtc_turn_secret",
 )
 LONG_SECRET_FIELDS = ("firebase_service_account_json",)
 
@@ -135,6 +137,14 @@ class SiteSettingsForm(forms.ModelForm):
             ok, message = test_smtp_configuration(config)
             if not ok:
                 raise ValidationError(f"SMTP validation failed: {message}")
+
+        stun_urls = (cleaned.get("webrtc_stun_urls") or "").strip()
+        if stun_urls:
+            for url in (part.strip() for part in stun_urls.split(",") if part.strip()):
+                if not url.lower().startswith(("stun:", "turn:", "turns:")):
+                    raise ValidationError(
+                        f"Invalid STUN/TURN URL '{url}'. URLs must start with stun:, turn:, or turns:."
+                    )
 
         return cleaned
 
