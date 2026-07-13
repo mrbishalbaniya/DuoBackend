@@ -83,20 +83,13 @@ class SmtpProvider(BaseProvider):
             return DeliveryResult(True, self.name, message_id="smtp-ok")
         except Exception as exc:
             logger.exception("SMTP delivery failed to %s via %s:%s", to, config.host, config.port)
-            message = str(exc)
-            if "535" in message or "Authentication failed" in message:
-                message = (
-                    "Brevo rejected SMTP login. In Brevo → SMTP & API → SMTP tab, copy the "
-                    f"exact Login value (current: {config.username or 'not set'}) and a fresh "
-                    "xsmtpsib- key. If login is correct but auth still fails, your transactional "
-                    "SMTP may need activation — contact Brevo support, or switch Email delivery "
-                    "to Brevo API and use an xkeysib- API key instead."
-                )
-            return DeliveryResult(False, self.name, error=message)
+            return DeliveryResult(False, self.name, error=str(exc))
 
 
-class BrevoApiProvider(BaseProvider):
-    name = "brevo_api"
+class NodemailerRelayProvider(BaseProvider):
+    """Send email via the Duo frontend Nodemailer relay (HTTPS)."""
+
+    name = "nodemailer"
 
     def send(
         self,
@@ -107,35 +100,50 @@ class BrevoApiProvider(BaseProvider):
         text_body: str,
         html_body: str,
     ) -> DeliveryResult:
-        api_key = (config.brevo_api_key or "").strip()
-        if not api_key:
-            return DeliveryResult(False, self.name, error="Brevo API key is not configured")
+        from django.conf import settings
+
+        relay_url = (config.nodemailer_relay_url or "").strip()
+        if not relay_url:
+            frontend = getattr(settings, "FRONTEND_URL", "").strip().rstrip("/")
+            if frontend:
+                relay_url = f"{frontend}/api/internal/email"
+        secret = (config.email_relay_secret or getattr(settings, "EMAIL_RELAY_SECRET", "") or "").strip()
+        if not relay_url:
+            return DeliveryResult(False, self.name, error="Nodemailer relay URL is not configured")
+        if not secret:
+            return DeliveryResult(
+                False,
+                self.name,
+                error="EMAIL_RELAY_SECRET is not configured on backend or in Integration settings.",
+            )
 
         from_addr = format_from_address(config)
         if not from_addr:
             return DeliveryResult(False, self.name, error="DEFAULT_FROM_EMAIL is not configured")
 
-        sender_email = config.from_email
-        if "<" in sender_email and ">" in sender_email:
-            import re
-
-            match = re.search(r"<([^>]+)>", sender_email)
-            sender_email = match.group(1) if match else sender_email
-
         payload: dict[str, Any] = {
-            "sender": {"name": config.from_name or "SajiloWork", "email": sender_email.strip()},
-            "to": [{"email": addr} for addr in to],
+            "smtp": {
+                "host": config.host,
+                "port": config.port,
+                "secure": config.use_ssl,
+                "requireTLS": config.use_tls and not config.use_ssl,
+                "auth": {
+                    "user": config.username,
+                    "pass": config.password,
+                },
+            },
+            "from": from_addr,
+            "to": to,
             "subject": subject,
-            "textContent": text_body,
+            "text": text_body,
+            "html": html_body or "",
         }
-        if html_body:
-            payload["htmlContent"] = html_body
 
         try:
             response = requests.post(
-                "https://api.brevo.com/v3/smtp/email",
+                relay_url,
                 headers={
-                    "api-key": api_key,
+                    "Authorization": f"Bearer {secret}",
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
@@ -148,10 +156,10 @@ class BrevoApiProvider(BaseProvider):
             return DeliveryResult(
                 False,
                 self.name,
-                error=f"Brevo API {response.status_code}: {response.text[:500]}",
+                error=f"Nodemailer relay {response.status_code}: {response.text[:500]}",
             )
         except Exception as exc:
-            logger.exception("Brevo API delivery failed")
+            logger.exception("Nodemailer relay delivery failed")
             return DeliveryResult(False, self.name, error=str(exc))
 
 
@@ -208,9 +216,8 @@ class ResendApiProvider(BaseProvider):
 
 
 PROVIDERS: dict[str, BaseProvider] = {
+    "nodemailer": NodemailerRelayProvider(),
     "smtp": SmtpProvider(),
-    "brevo_api": BrevoApiProvider(),
-    "brevo": BrevoApiProvider(),
     "resend": ResendApiProvider(),
     "resend_api": ResendApiProvider(),
 }

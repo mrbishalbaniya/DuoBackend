@@ -9,14 +9,15 @@ from email_service.service import _validate_recipients
 class EmailRenderingTests(TestCase):
     def test_render_registration_otp(self):
         config = EmailConfig(
-            delivery="smtp",
-            host="smtp-relay.brevo.com",
+            delivery="nodemailer",
+            host="smtp.example.com",
             port=587,
             use_tls=True,
             use_ssl=False,
             username="login@example.com",
             password="secret",
-            brevo_api_key="",
+            nodemailer_relay_url="https://example.com/api/internal/email",
+            email_relay_secret="relay-secret",
             resend_api_key="",
             from_email="noreply@example.com",
             from_name="SajiloWork",

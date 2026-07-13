@@ -9,7 +9,7 @@ from site_config.models import SiteSettings
 
 
 class Command(BaseCommand):
-    help = "Create Integration settings and apply Brevo email defaults from environment."
+    help = "Create Integration settings and apply email defaults from environment."
 
     def handle(self, *args, **options):
         obj = SiteSettings.get_solo()
@@ -19,33 +19,33 @@ class Command(BaseCommand):
         env_delivery = getattr(settings, "EMAIL_DELIVERY", "") or ""
         env_user = getattr(settings, "EMAIL_HOST_USER", "") or ""
         env_password = getattr(settings, "EMAIL_HOST_PASSWORD", "") or ""
-        env_brevo = getattr(settings, "BREVO_API_KEY", "") or ""
+        env_relay_secret = getattr(settings, "EMAIL_RELAY_SECRET", "") or ""
+        env_relay_url = getattr(settings, "NODEMAILER_RELAY_URL", "") or ""
         env_from = getattr(settings, "DEFAULT_FROM_EMAIL", "") or ""
         env_from_name = getattr(settings, "EMAIL_FROM_NAME", "") or ""
 
-        if obj.email_host == "smtp.gmail.com":
-            obj.email_host = env_host or "smtp-relay.brevo.com"
-            updated.append("email_host")
-        elif (not obj.email_host or obj.email_host == "smtp.gmail.com") and env_host:
+        if (not obj.email_host or obj.email_host == "smtp.gmail.com") and env_host:
             obj.email_host = env_host
+            updated.append("email_host")
+        elif obj.email_host == "smtp-relay.brevo.com":
+            obj.email_host = env_host or ""
             updated.append("email_host")
 
         if env_delivery and (
             not obj.email_delivery
-            or obj.email_delivery == "resend"
+            or obj.email_delivery in ("resend", "brevo")
             and not decrypt_secret(obj.resend_api_key or "").strip()
         ):
-            if env_delivery != obj.email_delivery:
-                obj.email_delivery = env_delivery
+            normalized_delivery = "nodemailer" if env_delivery == "brevo" else env_delivery
+            if normalized_delivery != obj.email_delivery:
+                obj.email_delivery = normalized_delivery
                 updated.append("email_delivery")
-        elif (
-            obj.email_delivery == "resend"
-            and not decrypt_secret(obj.resend_api_key or "").strip()
-            and obj.email_host_user
-            and obj.email_host_password
-        ):
-            obj.email_delivery = "smtp"
-            updated.append("email_delivery")
+        elif obj.email_delivery in ("resend", "brevo") and not decrypt_secret(
+            obj.resend_api_key or ""
+        ).strip():
+            if obj.email_host_user and obj.email_host_password:
+                obj.email_delivery = "nodemailer"
+                updated.append("email_delivery")
 
         if env_user and not obj.email_host_user:
             obj.email_host_user = env_user
@@ -55,9 +55,13 @@ class Command(BaseCommand):
             obj.email_host_password = encrypt_secret(env_password.replace(" ", ""))
             updated.append("email_host_password")
 
-        if env_brevo and not obj.brevo_api_key and not is_placeholder(env_brevo):
-            obj.brevo_api_key = encrypt_secret(env_brevo.strip())
-            updated.append("brevo_api_key")
+        if env_relay_url and not obj.nodemailer_relay_url:
+            obj.nodemailer_relay_url = env_relay_url.strip()
+            updated.append("nodemailer_relay_url")
+
+        if env_relay_secret and not obj.email_relay_secret and not is_placeholder(env_relay_secret):
+            obj.email_relay_secret = encrypt_secret(env_relay_secret.strip())
+            updated.append("email_relay_secret")
 
         if env_from and not obj.default_from_email:
             obj.default_from_email = env_from

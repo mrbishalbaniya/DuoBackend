@@ -27,21 +27,31 @@ class SiteSettings(models.Model):
         help_text="Comma-separated redirect URIs allowed for token exchange (include web and mobile callbacks).",
     )
 
-    # Email delivery
+    # Email delivery (Nodemailer-compatible SMTP — https://nodemailer.com/)
+    EMAIL_DELIVERY_NODEMAILER = "nodemailer"
     EMAIL_DELIVERY_SMTP = "smtp"
     EMAIL_DELIVERY_RESEND = "resend"
-    EMAIL_DELIVERY_BREVO = "brevo"
     EMAIL_DELIVERY_CHOICES = [
-        (EMAIL_DELIVERY_SMTP, "Brevo SMTP (recommended — smtp-relay.brevo.com:587)"),
-        (EMAIL_DELIVERY_BREVO, "Brevo API (HTTPS fallback when SMTP is blocked)"),
+        (EMAIL_DELIVERY_NODEMAILER, "Nodemailer (recommended — HTTPS relay via frontend)"),
+        (EMAIL_DELIVERY_SMTP, "SMTP direct (Django — use when relay is unavailable)"),
         (EMAIL_DELIVERY_RESEND, "Resend API"),
     ]
 
     email_delivery = models.CharField(
         max_length=16,
         choices=EMAIL_DELIVERY_CHOICES,
-        default=EMAIL_DELIVERY_SMTP,
-        help_text="Primary email provider. SMTP uses Brevo relay; API is used as automatic fallback.",
+        default=EMAIL_DELIVERY_NODEMAILER,
+        help_text="Nodemailer sends via the Duo frontend relay using the SMTP settings below.",
+    )
+    nodemailer_relay_url = models.URLField(
+        max_length=500,
+        blank=True,
+        help_text="Optional relay URL (default: FRONTEND_URL/api/internal/email).",
+    )
+    email_relay_secret = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Shared secret for the Nodemailer relay. Leave blank when saving to keep the current value.",
     )
     resend_api_key = models.CharField(
         max_length=255,
@@ -51,15 +61,15 @@ class SiteSettings(models.Model):
     brevo_api_key = models.CharField(
         max_length=255,
         blank=True,
-        help_text="Brevo API key (xkeysib-...). Leave blank when saving to keep the current value.",
+        help_text="Deprecated — no longer used. Leave blank.",
     )
 
-    # SMTP (Brevo relay by default)
+    # SMTP (Nodemailer transport options)
     email_host = models.CharField(
         max_length=255,
         blank=True,
-        default="smtp-relay.brevo.com",
-        help_text="SMTP relay host (Brevo: smtp-relay.brevo.com).",
+        default="",
+        help_text="SMTP host (Nodemailer: transport.host), e.g. smtp.gmail.com or smtp.sendgrid.net.",
     )
     email_port = models.PositiveIntegerField(default=587, blank=True, null=True)
     email_use_tls = models.BooleanField(default=True, blank=True, null=True)
@@ -72,15 +82,12 @@ class SiteSettings(models.Model):
     email_host_user = models.CharField(
         max_length=255,
         blank=True,
-        help_text=(
-            "Copy the exact SMTP login from Brevo → SMTP & API → SMTP tab "
-            "(may be your email or something@smtp-brevo.com — do not guess)."
-        ),
+        help_text="SMTP username (Nodemailer: transport.auth.user).",
     )
     email_host_password = models.CharField(
         max_length=255,
         blank=True,
-        help_text="Brevo SMTP key. Leave blank when saving to keep the current value.",
+        help_text="SMTP password or app password. Leave blank when saving to keep the current value.",
     )
     email_from_name = models.CharField(
         max_length=128,

@@ -7,8 +7,9 @@ import re
 import time
 from typing import Any
 
-from django.core.validators import validate_email
+from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 
 from email_service.config import EmailConfig, get_email_config
 from email_service.constants import EmailEvent, EmailProvider, EmailStatus
@@ -52,9 +53,7 @@ def _is_retryable(error: str) -> bool:
     lower = error.lower()
     return any(p in lower for p in _RETRYABLE_PATTERNS)
 
-
 from email_service.credentials import (
-    is_valid_brevo_api_key,
     is_valid_resend_api_key,
     smtp_configured,
 )
@@ -62,27 +61,33 @@ from email_service.credentials import (
 
 def _provider_available(name: str, config: EmailConfig) -> bool:
     normalized = name.lower()
+    if normalized == "nodemailer":
+        relay_configured = bool((config.nodemailer_relay_url or "").strip()) or bool(
+            getattr(settings, "FRONTEND_URL", "")
+        )
+        secret_configured = bool((config.email_relay_secret or "").strip()) or bool(
+            getattr(settings, "EMAIL_RELAY_SECRET", "")
+        )
+        return relay_configured and secret_configured and smtp_configured(
+            config.host, config.username, config.password
+        )
     if normalized == "smtp":
         return smtp_configured(config.host, config.username, config.password)
-    if normalized in ("brevo_api", "brevo"):
-        return is_valid_brevo_api_key(config.brevo_api_key)
     if normalized in ("resend_api", "resend"):
         return is_valid_resend_api_key(config.resend_api_key)
     return False
 
 
 def _normalize_provider(name: str) -> str:
-    normalized = (name or "smtp").lower()
-    if normalized == "brevo":
-        return "brevo_api"
+    normalized = (name or "nodemailer").lower()
     if normalized == "resend":
         return "resend_api"
     return normalized
 
 
 def _resolve_provider_chain(config: EmailConfig) -> list[str]:
-    primary = _normalize_provider(config.delivery or "smtp")
-    candidates = [primary, "smtp", "brevo_api", "resend_api"]
+    primary = _normalize_provider(config.delivery or "nodemailer")
+    candidates = [primary, "nodemailer", "smtp", "resend_api"]
     chain: list[str] = []
     for name in candidates:
         if name not in chain and _provider_available(name, config):
@@ -142,8 +147,8 @@ def _deliver(
             False,
             config.delivery,
             error=(
-                "No email provider is configured. Set Brevo SMTP credentials "
-                "(smtp-relay.brevo.com) or a Brevo API key in Integration settings."
+                "No email provider is configured. Set Nodemailer SMTP credentials and "
+                "EMAIL_RELAY_SECRET in Integration settings."
             ),
         )
 
@@ -327,7 +332,7 @@ def send_email(
         detail = failed.error_message if failed and failed.error_message else "Unknown error"
         raise RuntimeError(
             f"Email delivery failed: {detail} "
-            "(Admin → Integration settings → Email delivery / Brevo SMTP)"
+            "(Admin → Integration settings → Email delivery / Nodemailer SMTP)"
         )
     return success
 
@@ -372,12 +377,12 @@ def send_test_email(to: str) -> tuple[bool, str]:
 
 def test_smtp_configuration(config: EmailConfig | None = None) -> tuple[bool, str]:
     cfg = config or get_email_config()
-    if cfg.delivery in ("brevo_api", "brevo"):
-        if not cfg.brevo_api_key:
-            return False, "Brevo API key is required for Brevo API delivery"
-        return True, "Brevo API key is configured (use Test Email to verify delivery)"
     if cfg.delivery in ("resend", "resend_api"):
         if not cfg.resend_api_key:
             return False, "Resend API key is required for Resend delivery"
         return True, "Resend API key is configured (use Test Email to verify delivery)"
+    if cfg.delivery == "nodemailer":
+        if not smtp_configured(cfg.host, cfg.username, cfg.password):
+            return False, "SMTP host, username, and password are required for Nodemailer"
+        return True, "Nodemailer SMTP settings saved (use Send test email to verify delivery)"
     return validate_smtp_credentials(cfg)

@@ -28,7 +28,7 @@ class SiteSettingsAdmin(admin.ModelAdmin):
         "updated_at",
         "google_client_secret_status",
         "resend_api_key_status",
-        "brevo_api_key_status",
+        "email_relay_secret_status",
         "email_host_password_status",
         "esewa_secret_key_status",
         "cloudinary_api_secret_status",
@@ -60,21 +60,22 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                     "email_delivery",
                     "email_from_name",
                     "default_from_email",
-                    "brevo_api_key_status",
-                    "brevo_api_key",
+                    "nodemailer_relay_url",
+                    "email_relay_secret_status",
+                    "email_relay_secret",
                     "resend_api_key_status",
                     "resend_api_key",
                     "test_email_recipient",
                 ),
                 "description": (
-                    "Brevo SMTP is the default provider (smtp-relay.brevo.com:587, TLS). "
-                    "On Render free tier, SMTP ports may be blocked — keep a Brevo API key "
-                    "configured for automatic HTTPS fallback."
+                    "Nodemailer sends email via the Duo frontend relay (HTTPS). "
+                    "Configure SMTP credentials below — same options as "
+                    "nodemailer.createTransport({ host, port, secure, auth })."
                 ),
             },
         ),
         (
-            "Brevo SMTP",
+            "Nodemailer SMTP",
             {
                 "fields": (
                     "email_host",
@@ -84,6 +85,10 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                     "email_host_user",
                     "email_host_password_status",
                     "email_host_password",
+                ),
+                "description": (
+                    "SMTP transport settings used by Nodemailer. "
+                    "Port 587 + STARTTLS (email_use_tls) is typical; use port 465 + SSL for secure: true."
                 ),
             },
         ),
@@ -201,9 +206,9 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     def resend_api_key_status(self, obj):
         return _secret_status_html(obj.resend_api_key)
 
-    @admin.display(description="Brevo API key")
-    def brevo_api_key_status(self, obj):
-        return _secret_status_html(obj.brevo_api_key)
+    @admin.display(description="Email relay secret")
+    def email_relay_secret_status(self, obj):
+        return _secret_status_html(obj.email_relay_secret)
 
     @admin.display(description="SMTP password")
     def email_host_password_status(self, obj):

@@ -26,8 +26,9 @@ class IntegrationSettings:
     email_host_user: str
     email_host_password: str
     email_delivery: str
+    nodemailer_relay_url: str
+    email_relay_secret: str
     resend_api_key: str
-    brevo_api_key: str
     default_from_email: str
     email_from_name: str
     email_brand_logo_url: str
@@ -149,7 +150,7 @@ def get_integration_settings() -> IntegrationSettings:
         ),
         google_redirect_uri=redirect_uri,
         google_allowed_redirect_uris=allowed,
-        email_host=_pick_str(db("email_host"), settings.EMAIL_HOST, "smtp-relay.brevo.com"),
+        email_host=_pick_str(db("email_host"), settings.EMAIL_HOST, ""),
         email_port=_pick_int(db("email_port"), settings.EMAIL_PORT, 587),
         email_use_tls=_pick_bool(db("email_use_tls"), settings.EMAIL_USE_TLS, True),
         email_use_ssl=_pick_bool(
@@ -163,14 +164,18 @@ def get_integration_settings() -> IntegrationSettings:
         ).replace(" ", ""),
         email_delivery=_pick_str(
             db("email_delivery"),
-            getattr(settings, "EMAIL_DELIVERY", "smtp"),
-            "smtp",
+            getattr(settings, "EMAIL_DELIVERY", "nodemailer"),
+            "nodemailer",
+        ),
+        nodemailer_relay_url=_pick_str(
+            db("nodemailer_relay_url"),
+            getattr(settings, "NODEMAILER_RELAY_URL", ""),
+        ),
+        email_relay_secret=decrypt_secret(
+            _pick_str(db("email_relay_secret"), getattr(settings, "EMAIL_RELAY_SECRET", ""))
         ),
         resend_api_key=decrypt_secret(
             _pick_str(db("resend_api_key"), getattr(settings, "RESEND_API_KEY", ""))
-        ),
-        brevo_api_key=decrypt_secret(
-            _pick_str(db("brevo_api_key"), getattr(settings, "BREVO_API_KEY", ""))
         ),
         default_from_email=default_from,
         email_from_name=_pick_str(

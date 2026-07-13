@@ -43,6 +43,4 @@ def smtp_configured(host: str, username: str, password: str) -> bool:
         return False
     if is_placeholder(pwd) or pwd.startswith("enc:"):
         return False
-    if "brevo.com" in host_value.lower():
-        return is_valid_brevo_smtp_key(pwd)
     return True

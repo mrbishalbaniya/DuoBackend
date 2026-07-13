@@ -467,13 +467,15 @@ ESEWA_MOBILE_SECRET_KEY = env(
 ESEWA_MOBILE_LIVE = config("ESEWA_MOBILE_LIVE", default=not DEBUG, cast=bool)
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = config("EMAIL_HOST", default="smtp-relay.brevo.com")
+EMAIL_HOST = config("EMAIL_HOST", default="")
 EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
 EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
 EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="").strip()
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="").replace(" ", "")
-EMAIL_DELIVERY = config("EMAIL_DELIVERY", default="smtp")
+EMAIL_DELIVERY = config("EMAIL_DELIVERY", default="nodemailer")
+EMAIL_RELAY_SECRET = env("EMAIL_RELAY_SECRET")
+NODEMAILER_RELAY_URL = env("NODEMAILER_RELAY_URL")
 EMAIL_FROM_NAME = config("EMAIL_FROM_NAME", default="SajiloWork")
 EMAIL_BRAND_LOGO_URL = config("EMAIL_BRAND_LOGO_URL", default="")
 EMAIL_BRAND_PRIMARY_COLOR = config("EMAIL_BRAND_PRIMARY_COLOR", default="#6366f1")
@@ -481,7 +483,6 @@ EMAIL_FOOTER_TEXT = config("EMAIL_FOOTER_TEXT", default="© SajiloWork. All righ
 EMAIL_SOCIAL_LINKS = config("EMAIL_SOCIAL_LINKS", default="")
 EMAIL_SMTP_TIMEOUT = config("EMAIL_SMTP_TIMEOUT", default=15, cast=int)
 RESEND_API_KEY = config("RESEND_API_KEY", default="").strip()
-BREVO_API_KEY = config("BREVO_API_KEY", default="").strip()
 DEFAULT_FROM_EMAIL = config(
     "DEFAULT_FROM_EMAIL",
     default=f"SajiloWork <{EMAIL_HOST_USER}>" if EMAIL_HOST_USER else "noreply@sajilowork.com",
