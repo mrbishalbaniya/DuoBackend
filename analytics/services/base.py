@@ -67,12 +67,15 @@ def cache_key(prefix: str, **parts: Any) -> str:
 
 
 def cached_result(key: str, builder, ttl: int = CACHE_TTL_MEDIUM):
-    hit = cache.get(key)
-    if hit is not None:
-        return hit
-    value = builder()
-    cache.set(key, value, ttl)
-    return value
+    try:
+        hit = cache.get(key)
+        if hit is not None:
+            return hit
+        value = builder()
+        cache.set(key, value, ttl)
+        return value
+    except Exception:
+        return builder()
 
 
 def apply_profile_filters(qs: QuerySet, filters: dict, prefix: str = "") -> QuerySet:

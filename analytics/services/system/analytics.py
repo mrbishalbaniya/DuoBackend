@@ -64,7 +64,6 @@ def _check_cache() -> bool:
     except Exception:
         return False
 
-
 def _resource_metrics() -> dict:
     try:
         import psutil
@@ -84,10 +83,13 @@ def _check_redis() -> bool:
     try:
         import redis
 
-        redis_url = os.environ.get("REDIS_URL", "")
+        redis_url = os.environ.get("REDIS_URL", "").strip().strip('"').strip("'")
         if not redis_url:
             return False
-        client = redis.from_url(redis_url, socket_connect_timeout=2)
+        kwargs = {"socket_connect_timeout": 2}
+        if redis_url.startswith("rediss://"):
+            kwargs["ssl_cert_reqs"] = None
+        client = redis.from_url(redis_url, **kwargs)
         return client.ping()
     except Exception:
         return False

@@ -152,7 +152,11 @@ CHANNEL_LAYERS = {
     },
 }
 
-_redis_url = env("REDIS_URL")
+_redis_url = env("REDIS_URL").strip().strip('"').strip("'")
+_redis_cache_options: dict = {}
+if _redis_url.startswith("rediss://"):
+    _redis_cache_options["ssl_cert_reqs"] = None
+
 if _redis_url:
     CHANNEL_LAYERS = {
         "default": {
@@ -391,6 +395,7 @@ if _redis_url:
         "default": {
             "BACKEND": "django.core.cache.backends.redis.RedisCache",
             "LOCATION": _redis_url,
+            "OPTIONS": _redis_cache_options,
         }
     }
 
