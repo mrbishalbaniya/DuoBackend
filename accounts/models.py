@@ -109,9 +109,12 @@ class Profile(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["is_onboarded", "gender", "age"], name="profile_discover_idx"),
+            models.Index(fields=["is_onboarded", "age", "gender", "is_verified"], name="profile_discover_core_idx"),
             models.Index(fields=["is_verified"], name="profile_verified_idx"),
             models.Index(fields=["-updated_at"], name="profile_updated_idx"),
             models.Index(fields=["gender"], name="profile_gender_idx"),
+            models.Index(fields=["relationship_goal"], name="profile_rel_goal_idx"),
+            models.Index(fields=["-created_at"], name="profile_created_desc_idx"),
         ]
 
     def is_location_visible_to(self, viewer) -> bool:

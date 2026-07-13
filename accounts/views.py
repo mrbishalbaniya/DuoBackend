@@ -15,7 +15,6 @@ from photo_verification.constants import PhotoStatus
 from photo_verification.services.pipeline import PhotoVerificationPipeline
 from django.contrib.auth import get_user_model
 from django.conf import settings
-from django.db.models import Q
 from django.utils import timezone
 from google.auth.exceptions import GoogleAuthError
 from .auth_cookies import set_auth_cookies
@@ -43,17 +42,14 @@ from .password_reset import (
     verify_password_reset_otp,
 )
 from .models import Profile
-from .geo import profile_coordinates, haversine_km, CITY_COORDS
 from .serializer_context import profile_list_serializer_context
-from matching.models import Swipe
+from matching.recommendation import discover_profiles
 from matching.profile_visits import record_profile_visit
 from duo_project.cache import api_cache, get_user_cache_version
 from duo_project.cache import keys as cache_keys
 from duo_project.cache import ttl as cache_ttl
 from duo_project.cache.invalidation import invalidate_profile_caches, invalidate_user_caches
 from duo_project.cache.lookups import get_static_lookups
-from duo_project.query_optimization import discover_ordering, get_matched_user_ids
-from duo_project.security.privacy import blocked_user_ids
 
 User = get_user_model()
 
@@ -504,83 +500,29 @@ class DiscoverView(APIView):
         def build():
             return self._build_discover_payload(request)
 
-        data = api_cache.get_or_set(
+        payload = api_cache.get_or_set(
             cache_key,
             build,
             cache_ttl.DISCOVER,
             label="discover",
         )
-        return Response(data)
+        if isinstance(payload, list):
+            response = Response(payload)
+            return response
+
+        response = Response(payload["profiles"])
+        if payload.get("expanded_search"):
+            response["X-Duo-Discover-Expanded"] = "1"
+        return response
 
     @staticmethod
     def _build_discover_payload(request):
-        user_profile = request.user.profile
-        swiped_ids = Swipe.objects.filter(from_user=request.user).values_list(
-            "to_user_id", flat=True
-        )
-        matched_ids = get_matched_user_ids(request.user)
-        blocked = blocked_user_ids(request.user.id)
-        profiles = (
-            Profile.objects.select_related("user")
-            .exclude(user=request.user)
-            .exclude(user_id__in=swiped_ids)
-            .exclude(user_id__in=matched_ids)
-            .exclude(user_id__in=blocked)
-            .filter(is_onboarded=True)
-        )
-
-        profiles = profiles.filter(
-            age__gte=user_profile.pref_age_min,
-            age__lte=user_profile.pref_age_max,
-        )
-
-        if user_profile.pref_gender == "women":
-            profiles = profiles.filter(gender="F")
-        elif user_profile.pref_gender == "men":
-            profiles = profiles.filter(gender="M")
-
-        if user_profile.pref_verified_only:
-            profiles = profiles.filter(is_verified=True)
-
-        if (
-            user_profile.pref_relationship_goal
-            and user_profile.pref_relationship_goal != "everyone"
-        ):
-            profiles = profiles.filter(
-                Q(relationship_goal=user_profile.pref_relationship_goal)
-                | Q(relationship_goal="")
-            )
-
-        location_pref = (user_profile.pref_location or "").strip()
-        if location_pref:
-            pref_lower = location_pref.lower()
-            matched_cities = [city for city in CITY_COORDS if city in pref_lower]
-            if matched_cities:
-                city_query = Q()
-                for city in matched_cities:
-                    city_query |= Q(location__icontains=city)
-                profiles = profiles.filter(city_query)
-            else:
-                city_part = location_pref.split(",")[0].strip()
-                if city_part:
-                    profiles = profiles.filter(location__icontains=city_part)
-
-        candidates = list(discover_ordering(profiles, request.user.id)[:40])
-        user_coords = profile_coordinates(
-            user_profile.location, user_profile.user_id
-        )
-        max_km = max(1, user_profile.pref_max_distance_km or 50)
-
-        filtered = []
-        for profile in candidates:
-            coords = profile_coordinates(profile.location, profile.user_id)
-            if haversine_km(user_coords, coords) <= max_km:
-                filtered.append(profile)
-            if len(filtered) >= 10:
-                break
-
-        context = profile_list_serializer_context(request, filtered)
-        return ProfileSerializer(filtered, many=True, context=context).data
+        result = discover_profiles(request.user)
+        context = profile_list_serializer_context(request, result.profiles)
+        return {
+            "profiles": ProfileSerializer(result.profiles, many=True, context=context).data,
+            "expanded_search": result.expanded_search,
+        }
 
 
 class ProfileLookupsView(APIView):
