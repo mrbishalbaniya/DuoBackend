@@ -21,8 +21,11 @@ class SecurityHeadersMiddleware:
                 "Permissions-Policy",
                 "camera=(self), microphone=(self), geolocation=(self)",
             )
-            response.headers.setdefault(
-                "Content-Security-Policy",
-                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
-            )
+            # Restrictive CSP is for JSON API responses only. Applying it to
+            # /admin/ blocks all CSS, JS, images, and form submissions.
+            if request.path.startswith("/api/"):
+                response.headers.setdefault(
+                    "Content-Security-Policy",
+                    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+                )
         return response
