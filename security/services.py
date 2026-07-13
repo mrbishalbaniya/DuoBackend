@@ -342,9 +342,20 @@ class SecurityService:
         )
 
     def is_session_active(self, refresh_jti: str) -> bool:
-        return UserSession.objects.filter(
-            refresh_jti=refresh_jti, is_active=True, revoked_at__isnull=True
-        ).exists()
+        if not refresh_jti:
+            return True
+        try:
+            session = (
+                UserSession.objects.filter(refresh_jti=refresh_jti)
+                .only("is_active", "revoked_at")
+                .first()
+            )
+        except Exception:
+            return True
+        if session is None:
+            # No tracked session (legacy login or security logging unavailable).
+            return True
+        return session.is_active and session.revoked_at is None
 
     def register_access_token(self, access_jti: str, refresh_jti: str) -> None:
         if not access_jti or not refresh_jti:
@@ -353,12 +364,18 @@ class SecurityService:
 
         lifetime = getattr(settings, "SIMPLE_JWT", {}).get("ACCESS_TOKEN_LIFETIME", 3600)
         ttl = int(lifetime.total_seconds()) if hasattr(lifetime, "total_seconds") else int(lifetime)
-        cache.set(f"access_session:{access_jti}", refresh_jti, timeout=ttl)
+        try:
+            cache.set(f"access_session:{access_jti}", refresh_jti, timeout=ttl)
+        except Exception:
+            pass
 
     def is_access_session_active(self, access_jti: str) -> bool:
         if not access_jti:
             return True
-        refresh_jti = cache.get(f"access_session:{access_jti}")
+        try:
+            refresh_jti = cache.get(f"access_session:{access_jti}")
+        except Exception:
+            return True
         if refresh_jti is None:
             return True
         return self.is_session_active(refresh_jti)

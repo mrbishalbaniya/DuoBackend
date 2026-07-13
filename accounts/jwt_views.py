@@ -44,17 +44,18 @@ class CookieTokenObtainPairView(TokenObtainPairView):
         data = serializer.validated_data
         response = Response(data, status=status.HTTP_200_OK)
         set_auth_cookies(response, data["access"], data["refresh"])
-        try:
-            from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+        if getattr(serializer, "session_recorded", False):
+            try:
+                from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
-            from security.services import security_service
+                from security.services import security_service
 
-            refresh_jti = str(RefreshToken(data["refresh"])["jti"])
-            access_jti = str(AccessToken(data["access"])["jti"])
-            security_service.register_access_token(access_jti, refresh_jti)
-        except Exception:
-            pass
-        log_security_event("login_success", user_id=getattr(request.user, "id", None))
+                refresh_jti = str(RefreshToken(data["refresh"])["jti"])
+                access_jti = str(AccessToken(data["access"])["jti"])
+                security_service.register_access_token(access_jti, refresh_jti)
+            except Exception:
+                pass
+        log_security_event("login_success", user_id=getattr(serializer.user, "id", None))
         return response
 
 
@@ -80,7 +81,6 @@ class CookieTokenRefreshView(TokenRefreshView):
                 return Response({"detail": "Session revoked."}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception:
             log_security_event("refresh_session_check_failed", jti=jti)
-            return Response({"detail": "Session validation failed."}, status=status.HTTP_401_UNAUTHORIZED)
 
         serializer = self.get_serializer(data={"refresh": refresh})
         serializer.is_valid(raise_exception=True)

@@ -37,6 +37,7 @@ class DuoTokenObtainPairSerializer(TokenObtainPairSerializer):
             })
 
         self.user = user
+        self.session_recorded = False
         refresh = self.get_token(user)
         data = {
             "refresh": str(refresh),
@@ -50,6 +51,7 @@ class DuoTokenObtainPairSerializer(TokenObtainPairSerializer):
                     success=True,
                     refresh_token=data["refresh"],
                 )
+                self.session_recorded = True
             except Exception:
                 logger.exception("record_login_failed user_id=%s", user.id)
         return data
