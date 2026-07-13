@@ -50,8 +50,3 @@ def invalidate_conversation_for_users(conversation_id: int, user_ids: list[int],
 def invalidate_match_users(user1_id: int, user2_id: int, *, reason: str = "") -> None:
     invalidate_user_caches(user1_id, reason=reason or "match")
     invalidate_user_caches(user2_id, reason=reason or "match")
-
-
-def invalidate_avatar(user_id: int) -> None:
-    api_cache.delete(keys.avatar(user_id), label="avatar")
-    bump_user_cache_version(user_id, reason="avatar")

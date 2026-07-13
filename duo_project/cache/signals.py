@@ -9,7 +9,6 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from accounts.models import Profile
-from avatars.models import AvatarConfig
 from chat.models import ConversationPreference, Message
 from matching.models import Match, ProfileVisit, Swipe
 from security.models import SecurityEvent
@@ -18,7 +17,6 @@ from photo_verification.models import UserVerification
 from subscriptions.models import SubscriptionPayment, SubscriptionPlan, Wallet, WalletTopUp
 
 from duo_project.cache.invalidation import (
-    invalidate_avatar,
     invalidate_conversation_for_users,
     invalidate_match_users,
     invalidate_profile_caches,
@@ -108,11 +106,6 @@ def security_event_cache_invalidate(sender, instance, **kwargs):
 def verification_cache_invalidate(sender, instance, **kwargs):
     if instance.verification_status == VerificationStatus.VERIFIED.value:
         invalidate_user_caches(instance.user_id, reason="verification")
-
-
-@receiver(post_save, sender=AvatarConfig)
-def avatar_cache_invalidate(sender, instance, **kwargs):
-    invalidate_avatar(instance.user_id)
 
 
 def connect_cache_signals() -> None:

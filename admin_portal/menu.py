@@ -66,12 +66,6 @@ PORTAL_MENU_GROUPS = [
         "apps": ["notifications", "email_service"],
     },
     {
-        "id": "avatars",
-        "label": "Avatars",
-        "icon": "fas fa-user-astronaut",
-        "apps": ["avatars"],
-    },
-    {
         "id": "analytics",
         "label": "Analytics",
         "icon": "fas fa-chart-line",

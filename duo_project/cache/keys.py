@@ -110,10 +110,6 @@ def typing(conversation_id: str, user_id: int) -> str:
     return _join("typing", conversation_id, user_id)
 
 
-def avatar(user_id: int) -> str:
-    return _join("avatar", user_id)
-
-
 def security_events(user_id: int, version: int, unread_only: bool) -> str:
     return _join("security", "events", user_id, "v", version, "u", int(unread_only))
 
