@@ -112,7 +112,9 @@ class CallAcceptView(APIView):
         call, reason = accept_call(user=request.user, call=call)
         if not call:
             return Response({"detail": reason}, status=status.HTTP_409_CONFLICT)
-        return Response(serialize_call(call, viewer_id=request.user.id))
+        data = serialize_call(call, viewer_id=request.user.id)
+        data["ice_servers"] = get_ice_servers()
+        return Response(data)
 
 
 class CallRejectView(APIView):

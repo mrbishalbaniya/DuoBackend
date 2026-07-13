@@ -147,6 +147,19 @@ class CallSignalingConsumer(AsyncWebsocketConsumer):
             return
         await self.send(text_data=json.dumps(message))
 
+    async def inbox_event(self, event):
+        """Forward user-inbox call lifecycle events onto the call socket."""
+        event_type = event.get("event_type") or "notification"
+        payload = event.get("payload") or {}
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": event_type,
+                    **payload,
+                }
+            )
+        )
+
     async def _heartbeat_loop(self):
         try:
             while True:

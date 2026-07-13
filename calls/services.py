@@ -202,6 +202,33 @@ def accept_call(*, user, call: CallSession) -> tuple[CallSession | None, str]:
     mark_in_call(call.callee_id)
 
     _broadcast_call_event(call, "call_accepted")
+
+    # Also notify active call-room sockets (caller is usually on ws/call/, not inbox).
+    try:
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        layer = get_channel_layer()
+        if layer:
+            async_to_sync(layer.group_send)(
+                call_room(call.conversation.public_id),
+                {
+                    "type": "call.signal",
+                    "message": {
+                        "type": "call_accepted",
+                        "call_id": call.public_id,
+                        "conversation_id": call.conversation.public_id,
+                        "call_type": call.call_type,
+                        "status": call.status,
+                        "caller_id": call.caller_id,
+                        "callee_id": call.callee_id,
+                        "sender_id": user.id,
+                    },
+                },
+            )
+    except Exception:
+        logger.exception("call_accepted_room_broadcast_failed call_id=%s", call.public_id)
+
     return call, ""
 
 
