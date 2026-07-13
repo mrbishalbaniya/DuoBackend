@@ -13,6 +13,7 @@ class PhotoAnalysis(models.Model):
         indexes = [
             models.Index(fields=["user", "-created_at"]),
             models.Index(fields=["status"]),
+            models.Index(fields=["user", "image_hash"], name="photo_user_hash_idx"),
         ]
 
     user = models.ForeignKey(

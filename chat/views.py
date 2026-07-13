@@ -4,10 +4,22 @@ from rest_framework import status, parsers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db.models import Count, Exists, OuterRef, Q
-from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_chat_media
+from django.db.models import Q
+from duo_project.query_optimization import (
+    apply_list_window,
+    conversation_list_queryset,
+    prefetch_conversation_last_messages,
+)
+from accounts.throttling import AuthRateThrottle, UploadRateThrottle
+from duo_project.cloudinary_media.responses import upload_response_dict
+from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_chat_media_result
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from matching.models import Swipe
+from accounts.serializer_context import profile_list_serializer_context
+from duo_project.cache import api_cache, get_user_cache_version
+from duo_project.cache import keys as cache_keys
+from duo_project.cache import ttl as cache_ttl
+from duo_project.cache.presence import set_typing
 
 from .models import Conversation, ConversationPreference, Message, UserBlock, UserReport
 from .realtime import (
@@ -31,6 +43,7 @@ from .services import (
     mark_messages_delivered,
     mark_messages_read,
     react_to_message,
+    sanitize_message_content,
     touch_conversation_activity,
 )
 
@@ -77,39 +90,52 @@ class ConversationListView(APIView):
     def get(self, request):
         show_archived = request.query_params.get('archived') == 'true'
         unread_only = request.query_params.get('unread') == 'true'
-
-        convos = (
-            Conversation.objects.filter(
-                Q(match__user1=request.user) | Q(match__user2=request.user)
-            )
-            .annotate(
-                unread_count_annotated=Count(
-                    "messages",
-                    filter=Q(messages__is_read=False) & ~Q(messages__sender=request.user),
-                )
-            )
+        version = get_user_cache_version(request.user.id)
+        limit, offset = cache_keys.list_window_suffix(request)
+        cache_key = cache_keys.conversations(
+            request.user.id,
+            version,
+            archived=show_archived,
+            unread=unread_only,
+            limit=limit,
+            offset=offset,
         )
 
-        if not show_archived:
-            convos = convos.exclude(
-                preferences__user=request.user,
-                preferences__is_archived=True,
+        def build():
+            convos = conversation_list_queryset(
+                request.user,
+                show_archived=show_archived,
+                unread_only=unread_only,
             )
-
-        if unread_only:
-            convos = convos.filter(unread_count_annotated__gt=0)
-
-        convos = convos.annotate(
-            pinned_for_user=Exists(
-                ConversationPreference.objects.filter(
-                    conversation=OuterRef('pk'),
-                    user=request.user,
-                    is_pinned=True,
-                )
+            convos = apply_list_window(
+                convos,
+                request,
+                default_limit=200,
+                max_limit=500,
             )
-        ).order_by('-pinned_for_user', '-last_message_at', '-created_at')
-        serializer = ConversationSerializer(convos, many=True, context={'request': request})
-        return Response(serializer.data)
+            convo_list = list(convos)
+            last_messages = prefetch_conversation_last_messages(convo_list)
+            profiles = []
+            for convo in convo_list:
+                profiles.append(convo.match.get_other_user(request.user).profile)
+
+            return ConversationSerializer(
+                convo_list,
+                many=True,
+                context={
+                    **profile_list_serializer_context(request, profiles),
+                    "last_messages": last_messages,
+                },
+            ).data
+
+        return Response(
+            api_cache.get_or_set(
+                cache_key,
+                build,
+                cache_ttl.CONVERSATIONS,
+                label="conversations",
+            )
+        )
 
 
 class MessageListView(APIView):
@@ -180,7 +206,7 @@ class MessageListView(APIView):
         )
         serializer.is_valid(raise_exception=True)
 
-        content = serializer.validated_data.get('content', '')
+        content = sanitize_message_content(serializer.validated_data.get('content', ''))
         image_url = serializer.validated_data.get('image_url', '')
         reply_to_id = serializer.validated_data.get('reply_to_id')
 
@@ -291,6 +317,9 @@ class MessageReactView(APIView):
             emoji=emoji,
             reactions=reactions,
         )
+        from notifications.dispatch import dispatch_message_reaction_push
+
+        dispatch_message_reaction_push(message=msg, reactor=request.user, emoji=emoji)
         return Response(MessageSerializer(msg, context={'request': request}).data)
 
 
@@ -330,6 +359,7 @@ class TypingHeartbeatView(APIView):
             convo.user2_last_typed = timezone.now()
 
         convo.save(update_fields=['user1_last_typed', 'user2_last_typed'])
+        set_typing(convo.public_id, request.user.id)
         broadcast_typing_status(convo.public_id, user_id=request.user.id, is_typing=True)
         return Response({'status': 'ok'})
 
@@ -337,6 +367,7 @@ class TypingHeartbeatView(APIView):
 class ImageUploadView(APIView):
     """Upload an image for chat."""
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+    throttle_classes = [UploadRateThrottle]
 
     @extend_schema(
         tags=["Chat"],
@@ -357,13 +388,13 @@ class ImageUploadView(APIView):
         image = request.data['image']
 
         try:
-            file_url = upload_chat_media(image, user_id=request.user.id)
+            upload_result = upload_chat_media_result(image, user_id=request.user.id)
         except CloudinaryNotConfiguredError as exc:
             return Response({'detail': str(exc)}, status=503)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
 
-        return Response({'image_url': file_url}, status=201)
+        return Response(upload_response_dict(upload_result), status=201)
 
 
 class ConversationSettingsView(APIView):
@@ -483,8 +514,23 @@ class ConversationClearHistoryView(APIView):
         if error:
             return error
 
-        for message in convo.messages.all():
-            message.deleted_by.add(request.user)
+        through_model = Message.deleted_by.through
+        message_ids = list(convo.messages.values_list("id", flat=True))
+        if message_ids:
+            existing = set(
+                through_model.objects.filter(
+                    message_id__in=message_ids,
+                    user_id=request.user.id,
+                ).values_list("message_id", flat=True)
+            )
+            through_model.objects.bulk_create(
+                [
+                    through_model(message_id=mid, user_id=request.user.id)
+                    for mid in message_ids
+                    if mid not in existing
+                ],
+                ignore_conflicts=True,
+            )
 
         return Response({'detail': 'Chat history cleared.'})
 

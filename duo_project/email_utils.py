@@ -25,4 +25,5 @@ def send_configured_mail(
             html_message=html_message,
             context=context,
             fail_silently=False,
+            queue=True,
         )

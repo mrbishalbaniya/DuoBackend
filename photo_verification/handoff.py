@@ -46,4 +46,5 @@ def send_verification_handoff_email(*, to: str, handoff_url: str, user_name: str
         message=text,
         html_message=html,
         fail_silently=False,
+        queue=True,
     )

@@ -78,7 +78,7 @@ def _search_messages(q):
 
 
 def _search_wallets(q):
-    wallets = Wallet.objects.filter(user__username__icontains=q)[:SEARCH_LIMIT]
+    wallets = Wallet.objects.filter(user__username__icontains=q).select_related("user")[:SEARCH_LIMIT]
     return [
         _item("Wallet", w.user.username, f"{w.currency} {w.balance}", f"/admin/subscriptions/wallet/{w.pk}/change/", "fas fa-wallet")
         for w in wallets

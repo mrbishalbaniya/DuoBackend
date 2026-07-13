@@ -115,3 +115,21 @@ def broadcast_messages_read(
             "message_ids": message_ids,
         },
     )
+
+
+def broadcast_messages_delivered(
+    conversation_id: int | str,
+    *,
+    recipient_id: int,
+    message_ids: list[int],
+) -> None:
+    if not message_ids:
+        return
+    _send_to_chat_room(
+        conversation_id,
+        {
+            "type": "messages_delivered",
+            "recipient_id": recipient_id,
+            "message_ids": message_ids,
+        },
+    )

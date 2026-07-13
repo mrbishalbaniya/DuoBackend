@@ -32,12 +32,20 @@ def health_check(_request):
 
     update_ready = _update_service_ready() if db_ok else False
 
+    try:
+        from duo_project.cache.health import cache_health
+
+        cache_info = cache_health()
+    except Exception:
+        cache_info = {"backend": "unknown", "redis_configured": False}
+
     status_code = 200 if db_ok else 503
     commit = os.environ.get("RENDER_GIT_COMMIT", "")
     return JsonResponse(
         {
             "status": "ok" if db_ok else "degraded",
             "database": db_ok,
+            "cache": cache_info,
             "api_version": commit[:8] if commit else "local",
             "features": {
                 "wallet": wallet_routes,

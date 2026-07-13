@@ -95,16 +95,36 @@ class ProfileSerializer(serializers.ModelSerializer):
             for field in LOCATION_PRIVACY_FIELDS:
                 data.pop(field, None)
             data.pop("wallet_balance", None)
+            data["email"] = ""
+            data["phone_country_code"] = ""
+            data["phone_number"] = ""
+            if viewer is not None and not instance.is_location_visible_to(viewer):
+                data["location"] = ""
         return data
 
     def get_is_premium(self, obj):
+        billing = self.context.get("profile_billing")
+        if billing is not None:
+            entry = billing.get(obj.user_id)
+            if entry is not None:
+                return bool(entry.get("is_premium"))
         return user_has_active_subscription(obj.user)
 
     def get_subscription_expires_at(self, obj):
+        billing = self.context.get("profile_billing")
+        if billing is not None:
+            entry = billing.get(obj.user_id)
+            if entry is not None:
+                return entry.get("subscription_expires_at")
         active = get_active_subscription(obj.user)
         return active.expires_at if active else None
 
     def get_wallet_balance(self, obj):
+        billing = self.context.get("profile_billing")
+        if billing is not None:
+            entry = billing.get(obj.user_id)
+            if entry is not None:
+                return int(entry.get("wallet_balance", 0))
         return int(get_wallet_balance(obj.user))
 
     def validate_location_visibility(self, value):
@@ -138,8 +158,13 @@ class ProfileSerializer(serializers.ModelSerializer):
         from django.db.models import Q
 
         matched_ids = set()
-        for match in Match.objects.filter(Q(user1=user) | Q(user2=user)):
-            matched_ids.add(match.get_other_user(user).id)
+        for u1, u2 in Match.objects.filter(Q(user1=user) | Q(user2=user)).values_list(
+            "user1_id", "user2_id"
+        ):
+            if u1 != user.id:
+                matched_ids.add(u1)
+            if u2 != user.id:
+                matched_ids.add(u2)
 
         invalid = [uid for uid in friend_ids if uid not in matched_ids]
         if invalid:
@@ -212,6 +237,16 @@ class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["username", "email", "password", "full_name"]
+
+    def validate_email(self, value):
+        from accounts.email_otp import is_email_verified_for_registration, normalize_email
+
+        email = normalize_email(value)
+        if not is_email_verified_for_registration(email):
+            raise serializers.ValidationError(
+                "Email address is not verified. Complete OTP verification first."
+            )
+        return email
 
     def create(self, validated_data):
         full_name = validated_data.pop("full_name", "")

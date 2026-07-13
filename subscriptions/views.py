@@ -40,6 +40,9 @@ from .wallet_services import (
     get_wallet_summary,
     purchase_plan_with_wallet,
 )
+from duo_project.cache import api_cache, get_user_cache_version
+from duo_project.cache import keys as cache_keys
+from duo_project.cache import ttl as cache_ttl
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +56,14 @@ class SubscriptionPlanView(APIView):
         responses={200: SubscriptionPlanSerializer(many=True)},
     )
     def get(self, request):
-        return Response(get_subscription_plans())
+        return Response(
+            api_cache.get_or_set(
+                cache_keys.subscription_plans(),
+                get_subscription_plans,
+                cache_ttl.SUBSCRIPTION_PLANS,
+                label="subscription_plans",
+            )
+        )
 
 
 class SubscriptionStatusView(APIView):
@@ -65,14 +75,25 @@ class SubscriptionStatusView(APIView):
         responses={200: SubscriptionStatusSerializer},
     )
     def get(self, request):
-        active = get_active_subscription(request.user)
-        active_plan = get_subscription_plan(active.plan_id) if active else get_subscription_plan()
-        return Response(
-            {
+        version = get_user_cache_version(request.user.id)
+        cache_key = cache_keys.subscription_status(request.user.id, version)
+
+        def build():
+            active = get_active_subscription(request.user)
+            active_plan = get_subscription_plan(active.plan_id) if active else get_subscription_plan()
+            return {
                 "is_premium": active is not None,
                 "expires_at": active.expires_at if active else None,
                 "plan": active_plan,
             }
+
+        return Response(
+            api_cache.get_or_set(
+                cache_key,
+                build,
+                cache_ttl.SUBSCRIPTION_STATUS,
+                label="subscription_status",
+            )
         )
 
 
@@ -105,7 +126,20 @@ class WalletView(APIView):
         responses={200: WalletSerializer},
     )
     def get(self, request):
-        return Response(get_wallet_summary(request.user))
+        version = get_user_cache_version(request.user.id)
+        cache_key = cache_keys.wallet_summary(request.user.id, version)
+
+        def build():
+            return get_wallet_summary(request.user)
+
+        return Response(
+            api_cache.get_or_set(
+                cache_key,
+                build,
+                cache_ttl.WALLET_SUMMARY,
+                label="wallet_summary",
+            )
+        )
 
 
 class WalletTopUpInitiateView(APIView):
@@ -151,11 +185,11 @@ class WalletTopUpInitiateView(APIView):
             response_payload["mobile_sdk"] = {
                 "environment": mobile_environment,
                 "client_id": mobile_client_id,
-                "secret_id": mobile_secret_key,
                 "product_id": topup.transaction_uuid,
                 "product_name": "Duo Wallet Top-up",
                 "product_price": form_data["total_amount"],
                 "callback_url": cfg.esewa_success_url,
+                "native_sdk_available": True,
             }
 
         return Response(response_payload)
@@ -361,6 +395,20 @@ class EsewaSuccessView(APIView):
 
         try:
             topup = WalletTopUp.objects.get(transaction_uuid=transaction_uuid)
+            from decimal import Decimal, InvalidOperation
+
+            try:
+                paid_amount = Decimal(str(payload.get("total_amount", "")))
+            except (InvalidOperation, TypeError):
+                paid_amount = None
+            if paid_amount is None or paid_amount != topup.total_amount:
+                logger.warning(
+                    "eSewa amount mismatch uuid=%s expected=%s got=%s",
+                    transaction_uuid,
+                    topup.total_amount,
+                    payload.get("total_amount"),
+                )
+                return HttpResponseRedirect(redirect_url)
             activate_topup(topup, ref_id=ref_id, transaction_code=transaction_code)
             return HttpResponseRedirect(f"{frontend}/wallet?wallet=success")
         except WalletTopUp.DoesNotExist:
@@ -403,15 +451,37 @@ class EsewaFailureView(APIView):
                 logger.exception("Failed to decode eSewa failure payload")
 
         if transaction_uuid:
-            WalletTopUp.objects.filter(
+            failed_topups = WalletTopUp.objects.filter(
                 transaction_uuid=transaction_uuid,
                 status=WalletTopUp.STATUS_PENDING,
-            ).update(status=WalletTopUp.STATUS_FAILED, updated_at=timezone.now())
+            )
+            for topup in failed_topups:
+                topup.status = WalletTopUp.STATUS_FAILED
+                topup.updated_at = timezone.now()
+                topup.save(update_fields=["status", "updated_at"])
+                from notifications.dispatch import dispatch_payment_push
 
-            SubscriptionPayment.objects.filter(
+                dispatch_payment_push(
+                    user_id=topup.user_id,
+                    success=False,
+                    detail="Wallet top-up could not be completed.",
+                )
+
+            failed_payments = SubscriptionPayment.objects.filter(
                 transaction_uuid=transaction_uuid,
                 status=SubscriptionPayment.STATUS_PENDING,
-            ).update(status=SubscriptionPayment.STATUS_FAILED, updated_at=timezone.now())
+            )
+            for payment in failed_payments:
+                payment.status = SubscriptionPayment.STATUS_FAILED
+                payment.updated_at = timezone.now()
+                payment.save(update_fields=["status", "updated_at"])
+                from notifications.dispatch import dispatch_payment_push
+
+                dispatch_payment_push(
+                    user_id=payment.user_id,
+                    success=False,
+                    detail="Subscription payment could not be completed.",
+                )
 
         frontend = settings.FRONTEND_URL.rstrip("/")
         if transaction_uuid and str(transaction_uuid).startswith("WLT-"):

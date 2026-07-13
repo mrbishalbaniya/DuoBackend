@@ -99,6 +99,7 @@ class SecurityService:
                 "expiry_minutes": OTP_TTL_SECONDS // 60,
             },
             fail_silently=False,
+            queue=True,
         )
 
     def verify_and_enable_2fa(self, user, code: str) -> list[str]:
@@ -215,6 +216,7 @@ class SecurityService:
             to=user.email or user.username,
             context={"otp_code": code, "expiry_minutes": OTP_TTL_SECONDS // 60},
             fail_silently=False,
+            queue=True,
         )
 
     # ── Sessions & devices ─────────────────────────────────────
@@ -343,6 +345,27 @@ class SecurityService:
         return UserSession.objects.filter(
             refresh_jti=refresh_jti, is_active=True, revoked_at__isnull=True
         ).exists()
+
+    def register_access_token(self, access_jti: str, refresh_jti: str) -> None:
+        if not access_jti or not refresh_jti:
+            return
+        from django.conf import settings
+
+        lifetime = getattr(settings, "SIMPLE_JWT", {}).get("ACCESS_TOKEN_LIFETIME", 3600)
+        ttl = int(lifetime.total_seconds()) if hasattr(lifetime, "total_seconds") else int(lifetime)
+        cache.set(f"access_session:{access_jti}", refresh_jti, timeout=ttl)
+
+    def is_access_session_active(self, access_jti: str) -> bool:
+        if not access_jti:
+            return True
+        refresh_jti = cache.get(f"access_session:{access_jti}")
+        if refresh_jti is None:
+            return True
+        return self.is_session_active(refresh_jti)
+
+    def revoke_access_session(self, access_jti: str) -> None:
+        if access_jti:
+            cache.delete(f"access_session:{access_jti}")
 
     def revoke_session(self, user, session_id: int, *, current_jti: str = "") -> None:
         session = UserSession.objects.get(id=session_id, user=user)
@@ -490,7 +513,7 @@ class SecurityService:
             qs = qs.filter(success=success_only)
         total = qs.count()
         offset = (max(page, 1) - 1) * page_size
-        return list(qs[offset : offset + page_size]), total
+        return list(qs.select_related("device", "session")[offset : offset + page_size]), total
 
     def on_password_changed(self, user, request) -> None:
         self._log_event(

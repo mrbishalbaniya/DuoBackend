@@ -20,6 +20,8 @@ from channels.routing import ProtocolTypeRouter, URLRouter
 import chat.routing
 import activity.routing
 import analytics.routing
+import calls.routing
+import duo_project.realtime.routing as realtime_routing
 from duo_project.channels_auth import JWTAuthMiddlewareStack
 
 application = ProtocolTypeRouter(
@@ -28,6 +30,8 @@ application = ProtocolTypeRouter(
         "websocket": JWTAuthMiddlewareStack(
             URLRouter(
                 chat.routing.websocket_urlpatterns
+                + calls.routing.websocket_urlpatterns
+                + realtime_routing.websocket_urlpatterns
                 + activity.routing.websocket_urlpatterns
                 + analytics.routing.websocket_urlpatterns
             )

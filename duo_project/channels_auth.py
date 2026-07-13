@@ -12,6 +12,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 User = get_user_model()
 WS_TICKET_SALT = "duo-ws-ticket"
+CALL_WS_TICKET_SALT = "duo-call-ws-ticket"
+INBOX_WS_TICKET_SALT = "duo-inbox-ws-ticket"
 WS_TICKET_MAX_AGE = 300
 
 
@@ -31,8 +33,17 @@ def _user_from_access_token(token: str):
         return None
 
 
-def _user_from_ws_ticket(ticket: str, conversation_id: str):
-    signer = TimestampSigner(salt=WS_TICKET_SALT)
+def _user_from_inbox_ws_ticket(ticket: str):
+    signer = TimestampSigner(salt=INBOX_WS_TICKET_SALT)
+    try:
+        payload = signer.unsign(ticket, max_age=WS_TICKET_MAX_AGE)
+        return int(payload)
+    except (BadSignature, SignatureExpired, TypeError, ValueError):
+        return None
+
+
+def _user_from_ws_ticket(ticket: str, conversation_id: str, *, salt: str = WS_TICKET_SALT):
+    signer = TimestampSigner(salt=salt)
     try:
         payload = signer.unsign(ticket, max_age=WS_TICKET_MAX_AGE)
     except (BadSignature, SignatureExpired):
@@ -84,13 +95,23 @@ class JWTAuthMiddleware(BaseMiddleware):
             return await super().__call__(scope, receive, send)
 
         scope = dict(scope)
-        conversation_id = scope["url_route"]["kwargs"].get("conversation_id")
+        url_route = scope.get("url_route", {})
+        kwargs = url_route.get("kwargs", {}) if url_route else {}
+        conversation_id = kwargs.get("conversation_id")
         query_string = scope.get("query_string", b"").decode()
         query = parse_qs(query_string)
 
         user_id = None
-        if query.get("ticket") and conversation_id is not None:
-            user_id = _user_from_ws_ticket(query["ticket"][0], str(conversation_id))
+        path = scope.get("path", "")
+        ticket_salt = CALL_WS_TICKET_SALT if "/ws/call/" in path else WS_TICKET_SALT
+        if query.get("ticket") and "/ws/inbox/" in path:
+            user_id = _user_from_inbox_ws_ticket(query["ticket"][0])
+        elif query.get("ticket") and conversation_id is not None:
+            user_id = _user_from_ws_ticket(
+                query["ticket"][0],
+                str(conversation_id),
+                salt=ticket_salt,
+            )
         else:
             token = _extract_token(scope)
             if token:

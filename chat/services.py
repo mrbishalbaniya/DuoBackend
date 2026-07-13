@@ -6,6 +6,10 @@ from django.contrib.auth.models import User
 from django.db.models import Max
 from django.utils import timezone
 
+from duo_project.security.sanitize import sanitize_plain_text
+
+MAX_MESSAGE_LENGTH = 5000
+
 from .models import Conversation, ConversationPreference, Message, MessageReaction, UserBlock
 
 
@@ -40,6 +44,10 @@ def build_reactions_summary(message: Message) -> dict[str, list[int]]:
     for reaction in message.reactions.select_related("user").all():
         summary.setdefault(reaction.emoji, []).append(reaction.user_id)
     return summary
+
+
+def sanitize_message_content(content: str) -> str:
+    return sanitize_plain_text(content or "", max_length=MAX_MESSAGE_LENGTH, allow_newlines=True)
 
 
 def infer_message_type(content: str, image_url: str) -> str:
@@ -79,6 +87,20 @@ def react_to_message(message: Message, user: User, emoji: str) -> dict[str, list
     else:
         MessageReaction.objects.create(message=message, user=user, emoji=emoji)
     return build_reactions_summary(message)
+
+
+def edit_message(message: Message, user: User, content: str) -> Message | None:
+    if message.sender_id != user.id:
+        return None
+    if message.is_deleted_for_everyone:
+        return None
+    cleaned = sanitize_message_content(content)
+    if not cleaned:
+        return None
+    message.content = cleaned
+    message.edited_at = timezone.now()
+    message.save(update_fields=["content", "edited_at"])
+    return message
 
 
 def mark_messages_read(convo: Conversation, reader: User) -> list[int]:

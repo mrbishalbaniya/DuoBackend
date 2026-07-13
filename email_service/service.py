@@ -267,6 +267,8 @@ def send_email(
             html_body = wrap_html_body(text_to_html_paragraphs(text_body), config, preview_title=subject)
 
     if queue:
+        from duo_project.tasks.email import queue_email
+
         for recipient in recipients:
             _log_email(
                 event=event,
@@ -276,6 +278,14 @@ def send_email(
                 status=EmailStatus.QUEUED,
                 attempt_count=0,
             )
+        queue_email(
+            event=event,
+            to=to,
+            subject=subject,
+            message=message,
+            html_message=html_message,
+            context=ctx,
+        )
         return True
 
     success = True

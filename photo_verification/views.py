@@ -7,11 +7,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_profile_photo
+from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_profile_photo_result
 from photo_verification.constants import PhotoStatus
 from photo_verification.models import PhotoAnalysis
 from photo_verification.serializers import PhotoAnalysisSerializer, PhotoUploadResponseSerializer
-from photo_verification.services.embedding_pipeline import create_embedding_from_upload
 from photo_verification.services.pipeline import PhotoVerificationPipeline
 
 
@@ -111,7 +110,12 @@ class PhotoUploadView(APIView):
         image_url = ""
         try:
             image.seek(0)
-            image_url = upload_profile_photo(image, user_id=request.user.id)
+            upload_result = upload_profile_photo_result(
+                image,
+                user_id=request.user.id,
+                replace_url=getattr(request.user.profile, "photo_url", None) or None,
+            )
+            image_url = upload_result.image_url
         except CloudinaryNotConfiguredError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except ValueError as exc:
@@ -119,29 +123,36 @@ class PhotoUploadView(APIView):
 
         record = _save_analysis(request.user, image_url, result, is_primary=is_primary)
 
+        if result.status == PhotoStatus.APPROVED:
+            from notifications.dispatch import dispatch_photo_approved_push
+
+            dispatch_photo_approved_push(user_id=request.user.id)
+
         if image_url:
             try:
-                image.seek(0)
-                create_embedding_from_upload(
-                    request.user,
-                    image,
-                    photo_url=image_url,
-                    photo_analysis=record,
-                    quality_score=result.quality_score,
-                    is_primary=is_primary,
+                from duo_project.tasks.enqueue import safe_delay
+                from duo_project.tasks.verification import create_photo_embedding_task
+
+                safe_delay(
+                    create_photo_embedding_task,
+                    request.user.id,
+                    image_url,
+                    record.id if record else None,
+                    result.quality_score,
+                    is_primary,
                 )
             except Exception:
                 pass
 
         http_status = status.HTTP_201_CREATED if image_url else status.HTTP_200_OK
-        return Response(
-            {
-                "success": True,
-                "image_url": image_url,
-                "analysis": PhotoAnalysisSerializer(record).data,
-            },
-            status=http_status,
-        )
+        payload = {
+            "success": True,
+            "image_url": image_url,
+            "analysis": PhotoAnalysisSerializer(record).data,
+        }
+        if upload_result.media:
+            payload["media"] = upload_result.media
+        return Response(payload, status=http_status)
 
 
 class PhotoAnalysisDetailView(APIView):

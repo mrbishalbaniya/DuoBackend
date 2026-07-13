@@ -219,7 +219,11 @@ def compute_activity_zones(
             cells[key].likes += 1
 
     # New matches
-    for match in Match.objects.filter(matched_at__gte=since).iterator():
+    for match in (
+        Match.objects.filter(matched_at__gte=since)
+        .select_related("user1__profile", "user2__profile")
+        .iterator()
+    ):
         for u in (match.user1, match.user2):
             try:
                 profile = u.profile
@@ -230,7 +234,7 @@ def compute_activity_zones(
                 continue
             w = 6.0 * _decay(_hours_ago(match.matched_at))
             key = _cell_center(lat, lng, step)
-            _add_to_cell(cells, lat, lng, step, w, u.id, friend_ids, profile.location)
+            _add_to_cell(cells, lat, lng, step, w, profile.user_id, friend_ids, profile.location)
             cells[key].matches += 1
             if match.compatibility_score >= 85:
                 cells[key].events.append(f"High compatibility match ({match.compatibility_score}%)")

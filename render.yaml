@@ -43,6 +43,10 @@ services:
           type: redis
           name: duo-redis
           property: connectionString
+      - key: CELERY_ENABLED
+        value: "true"
+      - key: CELERY_TASK_EAGER
+        value: "false"
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
@@ -101,6 +105,70 @@ services:
     region: singapore
     plan: free
     ipAllowList: []
+
+  - type: worker
+    name: duo-celery-worker
+    runtime: python
+    region: singapore
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements-prod.txt
+    startCommand: celery -A duo_project worker -l info --concurrency=2
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.11"
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: duo-backend
+          envVarKey: SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: duo-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: duo-redis
+          property: connectionString
+      - key: CELERY_ENABLED
+        value: "true"
+      - key: CELERY_TASK_EAGER
+        value: "false"
+
+  - type: worker
+    name: duo-celery-beat
+    runtime: python
+    region: singapore
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements-prod.txt
+    startCommand: celery -A duo_project beat -l info
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.11"
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: duo-backend
+          envVarKey: SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: duo-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: duo-redis
+          property: connectionString
+      - key: CELERY_ENABLED
+        value: "true"
+      - key: CELERY_TASK_EAGER
+        value: "false"
 
 databases:
   - name: duo-db

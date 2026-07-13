@@ -5,6 +5,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from drf_spectacular.utils import extend_schema
 
 from accounts.auth_cookies import set_auth_cookies
+from accounts.throttling import AuthRateThrottle
 
 from .serializers import (
     BackupCodesResponseSerializer,
@@ -25,6 +26,10 @@ from .serializers import (
     UserDeviceSerializer,
 )
 from .services import security_service
+from duo_project.cache import api_cache, get_user_cache_version
+from duo_project.cache.invalidation import invalidate_user_caches
+from duo_project.cache import keys as cache_keys
+from duo_project.cache import ttl as cache_ttl
 
 
 def _current_jti(request) -> str:
@@ -137,6 +142,7 @@ class BackupCodesStatusView(APIView):
 
 class TwoFactorLoginView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     @extend_schema(tags=["Security"], summary="Complete login with 2FA code")
     def post(self, request):
@@ -165,6 +171,7 @@ class TwoFactorLoginView(APIView):
 
 class TwoFactorLoginSendOtpView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     @extend_schema(tags=["Security"], summary="Send 2FA email OTP during login")
     def post(self, request):
@@ -289,14 +296,28 @@ class SecurityEventsView(APIView):
     @extend_schema(tags=["Security"], summary="Security alerts")
     def get(self, request):
         unread_only = request.query_params.get("unread") == "true"
-        events = security_service.list_events(request.user, unread_only=unread_only)
-        return Response({"events": SecurityEventSerializer(events, many=True).data})
+        version = get_user_cache_version(request.user.id)
+        cache_key = cache_keys.security_events(request.user.id, version, unread_only)
+
+        def build():
+            events = security_service.list_events(request.user, unread_only=unread_only)
+            return {"events": SecurityEventSerializer(events, many=True).data}
+
+        return Response(
+            api_cache.get_or_set(
+                cache_key,
+                build,
+                cache_ttl.SECURITY_EVENTS,
+                label="security_events",
+            )
+        )
 
 
 class SecurityEventReadView(APIView):
     @extend_schema(tags=["Security"], summary="Mark security alert as read")
     def post(self, request, event_id: int):
         event = security_service.mark_event_read(request.user, event_id)
+        invalidate_user_caches(request.user.id, reason="security_event_read")
         return Response(SecurityEventSerializer(event).data)
 
 
@@ -304,6 +325,7 @@ class SecurityEventsReadAllView(APIView):
     @extend_schema(tags=["Security"], summary="Mark all security alerts as read")
     def post(self, request):
         count = security_service.mark_all_events_read(request.user)
+        invalidate_user_caches(request.user.id, reason="security_events_read_all")
         return Response({"marked": count})
 
 
@@ -349,6 +371,7 @@ class BiometricStatusView(APIView):
 
 class BiometricLoginView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     @extend_schema(tags=["Security"], summary="Login with biometric token")
     def post(self, request):

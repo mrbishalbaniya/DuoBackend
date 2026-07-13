@@ -1,11 +1,17 @@
 import json
+import logging
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
 
+from duo_project.realtime.presence import mark_active
+from duo_project.realtime.registry import register_connection, touch_connection, unregister_connection
+from duo_project.realtime.throttle import allow_event
 from .realtime import ACTIVITY_GROUP
 from .services.zones import compute_activity_zones, filter_zones_for_flags
+
+logger = logging.getLogger("duo.realtime")
 
 
 class ActivityConsumer(AsyncWebsocketConsumer):
@@ -18,10 +24,20 @@ class ActivityConsumer(AsyncWebsocketConsumer):
         self.user = user
         self.viewport: dict | None = None
         await self.channel_layer.group_add(ACTIVITY_GROUP, self.channel_name)
+
+        if not register_connection(user.id, self.channel_name, socket_type="activity"):
+            await self.channel_layer.group_discard(ACTIVITY_GROUP, self.channel_name)
+            await self.close(code=4429)
+            return
+
         await self.accept()
+        mark_active(user.id)
+        await self.send(json.dumps({"type": "connected"}))
         await self.send_zones()
 
     async def disconnect(self, close_code):
+        if hasattr(self, "user"):
+            unregister_connection(self.user.id, self.channel_name)
         await self.channel_layer.group_discard(ACTIVITY_GROUP, self.channel_name)
 
     async def receive(self, text_data):
@@ -30,7 +46,18 @@ class ActivityConsumer(AsyncWebsocketConsumer):
         except json.JSONDecodeError:
             return
 
-        if data.get("type") == "viewport":
+        event_type = (data.get("type") or "").strip().lower()
+        if not allow_event(self.user.id, event_type):
+            return
+
+        touch_connection(self.user.id, self.channel_name)
+
+        if event_type == "ping":
+            mark_active(self.user.id)
+            await self.send(json.dumps({"type": "pong", "ts": data.get("ts")}))
+            return
+
+        if event_type == "viewport":
             self.viewport = {
                 "lat_min": float(data["lat_min"]),
                 "lat_max": float(data["lat_max"]),

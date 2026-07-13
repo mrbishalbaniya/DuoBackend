@@ -144,6 +144,9 @@ class VerificationEngine:
         if verified_badge:
             session.verified_at = timezone.now()
             Profile.objects.filter(user=session.user).update(is_verified=True)
+            from duo_project.realtime.broadcast import broadcast_profile_verified
+
+            broadcast_profile_verified(user_id=session.user_id)
 
         session.save()
 
@@ -201,6 +204,9 @@ class VerificationEngine:
         session.review_notes = notes
         session.save(update_fields=["verification_status", "verified_at", "review_notes", "updated_at"])
         Profile.objects.filter(user=session.user).update(is_verified=True)
+        from duo_project.realtime.broadcast import broadcast_profile_verified
+
+        broadcast_profile_verified(user_id=session.user_id)
 
     @staticmethod
     def admin_reject(session: UserVerification, notes: str = "") -> None:

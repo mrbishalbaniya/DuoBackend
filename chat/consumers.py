@@ -1,18 +1,32 @@
+import asyncio
 import json
+import logging
+
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
+
+from duo_project.realtime.groups import chat_room, user_inbox
+from duo_project.realtime.presence import mark_active
+from duo_project.realtime.registry import register_connection, touch_connection, unregister_connection
+from duo_project.realtime.throttle import allow_event
 from .models import Conversation, Message
 from .services import (
     conversation_is_blocked,
     create_security_system_message,
     delete_message_for_user,
+    edit_message,
     infer_message_type,
     mark_messages_delivered,
     mark_messages_read,
     react_to_message,
+    sanitize_message_content,
     touch_conversation_activity,
 )
+
+logger = logging.getLogger("duo.realtime")
+
+HEARTBEAT_INTERVAL = 30
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -24,7 +38,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         self.user = user
         self.conversation_id = self.scope["url_route"]["kwargs"]["conversation_id"]
-        self.room_group_name = f"chat_{self.conversation_id}"
+        self.room_group_name = chat_room(self.conversation_id)
+        self.inbox_group_name = user_inbox(user.id)
 
         is_member = await self.verify_membership()
         if not is_member:
@@ -32,17 +47,50 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
+        await self.channel_layer.group_add(self.inbox_group_name, self.channel_name)
+
+        if not register_connection(user.id, self.channel_name, socket_type="chat"):
+            await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+            await self.channel_layer.group_discard(self.inbox_group_name, self.channel_name)
+            await self.close(code=4429)
+            return
+
         await self.accept()
+
+        mark_active(user.id)
         await self.mark_delivered_on_connect()
+        await self.send(text_data=json.dumps({"type": "connected", "conversation_id": str(self.conversation_id)}))
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
     async def disconnect(self, close_code):
+        if hasattr(self, "_heartbeat_task"):
+            self._heartbeat_task.cancel()
         if hasattr(self, "room_group_name"):
             await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+        if hasattr(self, "inbox_group_name"):
+            await self.channel_layer.group_discard(self.inbox_group_name, self.channel_name)
+        if hasattr(self, "user"):
+            unregister_connection(self.user.id, self.channel_name)
 
     async def receive(self, text_data):
-        data = json.loads(text_data)
-        message_type = data.get("type")
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            await self._send_error("invalid_json", "Malformed JSON payload.")
+            return
+
+        message_type = (data.get("type") or "").strip()
+        if not allow_event(self.user.id, message_type):
+            await self._send_error("rate_limited", "Too many events. Slow down.")
+            return
+
+        touch_connection(self.user.id, self.channel_name)
         user_id = self.user.id
+
+        if message_type == "ping":
+            mark_active(user_id)
+            await self.send(text_data=json.dumps({"type": "pong", "ts": data.get("ts")}))
+            return
 
         if message_type == "chat_message":
             content = data.get("content", "")
@@ -57,6 +105,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 reply_to_id=reply_to_id,
             )
             if not saved_msg:
+                await self._send_error("send_failed", "Could not send message.")
                 return
 
             await self.channel_layer.group_send(
@@ -74,6 +123,32 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "client_temp_id": client_temp_id,
                 },
             )
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "message_ack",
+                        "id": saved_msg["id"],
+                        "client_temp_id": client_temp_id,
+                        "status": "sent",
+                    }
+                )
+            )
+
+        elif message_type == "edit_message":
+            message_id = data.get("id")
+            content = data.get("content", "")
+            edited = await self.edit_message_action(message_id, user_id, content)
+            if edited:
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        "type": "message_edited",
+                        "id": edited["id"],
+                        "content": edited["content"],
+                        "edited_at": edited["edited_at"],
+                        "sender_id": user_id,
+                    },
+                )
 
         elif message_type == "delete_message":
             message_id = data.get("id")
@@ -110,13 +185,36 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
 
         elif message_type == "typing":
-            is_typing = data.get("is_typing")
+            is_typing = bool(data.get("is_typing", True))
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     "type": "typing_status",
                     "user_id": user_id,
                     "is_typing": is_typing,
+                },
+            )
+
+        elif message_type == "recording":
+            is_recording = bool(data.get("is_recording", True))
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    "type": "recording_status",
+                    "user_id": user_id,
+                    "is_recording": is_recording,
+                },
+            )
+
+        elif message_type == "upload_progress":
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    "type": "upload_progress",
+                    "user_id": user_id,
+                    "upload_id": data.get("upload_id"),
+                    "progress": data.get("progress", 0),
+                    "media_type": data.get("media_type", "file"),
                 },
             )
 
@@ -181,6 +279,43 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
+    async def recording_status(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "recording_status",
+                    "user_id": event["user_id"],
+                    "is_recording": event["is_recording"],
+                }
+            )
+        )
+
+    async def upload_progress(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "upload_progress",
+                    "user_id": event["user_id"],
+                    "upload_id": event.get("upload_id"),
+                    "progress": event.get("progress", 0),
+                    "media_type": event.get("media_type", "file"),
+                }
+            )
+        )
+
+    async def message_edited(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "message_edited",
+                    "id": event["id"],
+                    "content": event["content"],
+                    "edited_at": event["edited_at"],
+                    "sender_id": event["sender_id"],
+                }
+            )
+        )
+
     async def message_deleted(self, event):
         await self.send(
             text_data=json.dumps(
@@ -217,6 +352,41 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
+    async def messages_delivered(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "messages_delivered",
+                    "recipient_id": event["recipient_id"],
+                    "message_ids": event["message_ids"],
+                }
+            )
+        )
+
+    async def inbox_event(self, event):
+        """Forward inbox notifications to chat socket (optional single-socket clients)."""
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": event.get("event_type", "notification"),
+                    **(event.get("payload") or {}),
+                }
+            )
+        )
+
+    async def _heartbeat_loop(self):
+        try:
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL)
+                touch_connection(self.user.id, self.channel_name)
+                mark_active(self.user.id)
+                await self.send(text_data=json.dumps({"type": "ping"}))
+        except asyncio.CancelledError:
+            return
+
+    async def _send_error(self, code: str, message: str) -> None:
+        await self.send(text_data=json.dumps({"type": "error", "code": code, "message": message}))
+
     @database_sync_to_async
     def verify_membership(self):
         try:
@@ -235,7 +405,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         convo = self._get_conversation()
         if not convo:
             return
-        mark_messages_delivered(convo, self.user)
+        delivered_ids = mark_messages_delivered(convo, self.user)
+        if delivered_ids:
+            from .realtime import broadcast_messages_delivered
+
+            broadcast_messages_delivered(
+                self.conversation_id,
+                recipient_id=self.user.id,
+                message_ids=delivered_ids,
+            )
 
     def _get_conversation(self):
         key = str(self.conversation_id).strip()
@@ -291,6 +469,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def save_message(self, user_id, content, image_url="", reply_to_id=None):
         try:
+            from duo_project.security.media_urls import is_allowed_media_url
+
+            content = sanitize_message_content(content)
+            if not content and not (image_url or "").strip():
+                return None
+
+            if image_url and not is_allowed_media_url(image_url):
+                return None
             convo = self._get_conversation()
             if not convo:
                 return None
@@ -346,6 +532,28 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if key.isdigit() and len(key) < 10:
             return convo.id == int(key)
         return False
+
+    @database_sync_to_async
+    def edit_message_action(self, message_id, user_id, content):
+        try:
+            msg = Message.objects.select_related("conversation__match", "sender__profile").get(id=message_id)
+            convo = msg.conversation
+            match = convo.match
+            if user_id not in (match.user1_id, match.user2_id):
+                return None
+            if not self._conversation_matches(convo):
+                return None
+            user = match.user1 if match.user1_id == user_id else match.user2
+            updated = edit_message(msg, user, content)
+            if not updated:
+                return None
+            return {
+                "id": updated.id,
+                "content": updated.content,
+                "edited_at": updated.edited_at.isoformat() if updated.edited_at else "",
+            }
+        except Message.DoesNotExist:
+            return None
 
     @database_sync_to_async
     def delete_message_action(self, message_id, user_id, delete_type):

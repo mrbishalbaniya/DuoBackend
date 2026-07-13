@@ -11,6 +11,23 @@ from django.db import connection
 from django.utils import timezone
 
 
+def _celery_background_jobs() -> dict:
+    try:
+        from duo_project.tasks.monitoring import get_celery_health
+
+        health = get_celery_health()
+        return {
+            "celery": health.get("enabled", False) or health.get("eager_mode", False),
+            "status": health.get("status"),
+            "workers_online": health.get("workers_online", 0),
+            "active_tasks": health.get("active_tasks", 0),
+            "recent_failures": health.get("recent_failures", 0),
+            "queues": health.get("queues", []),
+        }
+    except Exception:
+        return {"celery": False, "queues": []}
+
+
 def get_system_analytics() -> dict:
     db_latency = _measure_db_latency()
     cache_ok = _check_cache()
@@ -36,10 +53,7 @@ def get_system_analytics() -> dict:
             "healthy": redis_ok,
         },
         "resources": _resource_metrics(),
-        "background_jobs": {
-            "celery": False,
-            "queues": [],
-        },
+        "background_jobs": _celery_background_jobs(),
         "websocket": {
             "channels_enabled": "channels" in settings.INSTALLED_APPS,
             "backend": settings.CHANNEL_LAYERS.get("default", {}).get("BACKEND", ""),

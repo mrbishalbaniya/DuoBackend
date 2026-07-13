@@ -72,6 +72,7 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=True, cast=bool)
     SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=31536000, cast=int)
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = config("SECURE_HSTS_PRELOAD", default=True, cast=bool)
     SECURE_CONTENT_TYPE_NOSNIFF = True
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = True
@@ -91,6 +92,7 @@ INSTALLED_APPS = [
     "channels",
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "corsheaders",
     "site_config",
@@ -102,27 +104,33 @@ INSTALLED_APPS = [
     "photo_verification",
     "weather",
     "notifications",
+    "calls",
     "activity",
     "avatars",
     "update",
     "security",
     "analytics",
     "admin_portal",
+    "django_celery_results",
 ]
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "django.middleware.gzip.GZipMiddleware",
     *(
         ["whitenoise.middleware.WhiteNoiseMiddleware"]
         if not DEBUG
         else []
     ),
+    "duo_project.cache.middleware.CachePresenceMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "duo_project.security.origin.CookieOriginMiddleware",
+    "duo_project.security.middleware.SecurityHeadersMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -153,17 +161,72 @@ CHANNEL_LAYERS = {
 }
 
 _redis_url = env("REDIS_URL").strip().strip('"').strip("'")
+REDIS_URL = _redis_url
 _redis_cache_options: dict = {}
+_redis_ssl_verify = config("REDIS_SSL_VERIFY", default=not DEBUG, cast=bool)
 if _redis_url.startswith("rediss://"):
-    _redis_cache_options["ssl_cert_reqs"] = None
+    import ssl
+
+    _redis_cache_options["ssl_cert_reqs"] = (
+        ssl.CERT_REQUIRED if _redis_ssl_verify else None
+    )
 
 if _redis_url:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
-            "CONFIG": {"hosts": [_redis_url]},
+            "CONFIG": {
+                "hosts": [_redis_url],
+                "capacity": 1500,
+                "expiry": 60,
+            },
         }
     }
+
+
+def _celery_redis_url(db_index: int) -> str:
+    if not _redis_url:
+        return f"redis://127.0.0.1:6379/{db_index}"
+    if _redis_url.rstrip("/").rsplit("/", 1)[-1].isdigit():
+        base = _redis_url.rstrip("/").rsplit("/", 1)[0]
+        return f"{base}/{db_index}"
+    return f"{_redis_url.rstrip('/')}/{db_index}"
+
+
+CELERY_ENABLED = config("CELERY_ENABLED", default=bool(_redis_url), cast=bool)
+CELERY_BROKER_URL = env("CELERY_BROKER_URL") or _celery_redis_url(1)
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND") or "django-db"
+CELERY_TASK_ALWAYS_EAGER = config(
+    "CELERY_TASK_EAGER",
+    default=not CELERY_ENABLED,
+    cast=bool,
+)
+CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = config("CELERY_TASK_TIME_LIMIT", default=300, cast=int)
+CELERY_TASK_SOFT_TIME_LIMIT = config("CELERY_TASK_SOFT_TIME_LIMIT", default=240, cast=int)
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_RESULT_EXTENDED = True
+CELERY_TASK_DEFAULT_QUEUE = "default"
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_SEND_TASK_EVENTS = True
+CELERY_TASK_SEND_SENT_EVENT = True
+
+# ── WebRTC (voice/video calls) ───────────────────────────────────────────────
+WEBRTC_STUN_URLS = [
+    url.strip()
+    for url in env("WEBRTC_STUN_URLS", default="stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302").split(",")
+    if url.strip()
+]
+WEBRTC_TURN_URL = env("WEBRTC_TURN_URL")
+WEBRTC_TURN_USERNAME = env("WEBRTC_TURN_USERNAME")
+WEBRTC_TURN_CREDENTIAL = env("WEBRTC_TURN_CREDENTIAL")
+WEBRTC_TURN_SECRET = env("WEBRTC_TURN_SECRET")
+WEBRTC_TURN_TTL = config("WEBRTC_TURN_TTL", default=86400, cast=int)
 
 DATABASES = {
     "default": {
@@ -264,6 +327,22 @@ CLOUDINARY_CHAT_FOLDER = config("CLOUDINARY_CHAT_FOLDER", default="duo/chat_medi
 CLOUDINARY_VERIFICATION_FOLDER = config(
     "CLOUDINARY_VERIFICATION_FOLDER", default="duo/verification_selfies"
 )
+
+# User media storage backend: cloudinary (default) | r2 (Cloudflare R2 + CDN)
+# See documentation/CLOUDINARY_MEDIA.md for delivery presets and upload behavior.
+MEDIA_STORAGE_BACKEND = config("MEDIA_STORAGE_BACKEND", default="cloudinary")
+R2_ACCOUNT_ID = env("R2_ACCOUNT_ID")
+R2_ACCESS_KEY_ID = env("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = env("R2_SECRET_ACCESS_KEY")
+R2_BUCKET_NAME = env("R2_BUCKET_NAME")
+R2_ENDPOINT_URL = env("R2_ENDPOINT_URL")
+R2_PUBLIC_URL = env("R2_PUBLIC_URL")
+R2_REGION_NAME = config("R2_REGION_NAME", default="auto")
+R2_LOCATION_PREFIX = config("R2_LOCATION_PREFIX", default="duo")
+R2_PROFILE_PREFIX = config("R2_PROFILE_PREFIX", default="profile_photos")
+R2_CHAT_PREFIX = config("R2_CHAT_PREFIX", default="chat_media")
+R2_VERIFICATION_PREFIX = config("R2_VERIFICATION_PREFIX", default="verification_selfies")
+R2_AUTO_CREATE_BUCKET = config("R2_AUTO_CREATE_BUCKET", default=DEBUG, cast=bool)
 
 # OpenWeather — server-side only; never expose to the client
 OPENWEATHER_API_KEY = env("OPENWEATHER_API_KEY")
@@ -388,6 +467,8 @@ DEFAULT_FROM_EMAIL = config(
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "duo-default",
+        "TIMEOUT": 300,
     }
 }
 if _redis_url:
@@ -395,9 +476,23 @@ if _redis_url:
         "default": {
             "BACKEND": "django.core.cache.backends.redis.RedisCache",
             "LOCATION": _redis_url,
-            "OPTIONS": _redis_cache_options,
+            "OPTIONS": {
+                **_redis_cache_options,
+            },
+            "KEY_PREFIX": "duo",
+            "TIMEOUT": 300,
         }
     }
+
+CACHE_ENABLED = config("CACHE_ENABLED", default=True, cast=bool)
+
+REQUIRE_EMAIL_OTP_FOR_REGISTRATION = config(
+    "REQUIRE_EMAIL_OTP_FOR_REGISTRATION",
+    default=not DEBUG,
+    cast=bool,
+)
+
+TRUSTED_MEDIA_HOSTS = env("TRUSTED_MEDIA_HOSTS", default="")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -414,6 +509,10 @@ REST_FRAMEWORK = {
         "user": "300/minute",
         "auth": "10/minute",
         "weather": "120/minute",
+        "upload": "30/hour",
+        "swipe": "120/hour",
+        "calls": "30/hour",
+        "verification_handoff": "60/hour",
     },
     "EXCEPTION_HANDLER": "duo_project.exceptions.custom_exception_handler",
 }
@@ -478,7 +577,7 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "AUTH_HEADER_TYPES": ("Bearer",),
     "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": False,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS = [
@@ -518,6 +617,26 @@ LOGGING = {
         "update": {
             "handlers": ["console"],
             "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
+        "duo.media": {
+            "handlers": ["console"],
+            "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
+        "duo.cloudinary": {
+            "handlers": ["console"],
+            "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
+        "duo.notifications": {
+            "handlers": ["console"],
+            "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
+        "duo.security": {
+            "handlers": ["console"],
+            "level": "INFO",
             "propagate": False,
         },
     },

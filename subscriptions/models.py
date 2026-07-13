@@ -46,6 +46,12 @@ class SubscriptionPlan(models.Model):
         ordering = ["sort_order", "duration_days", "amount"]
         verbose_name = "Who liked you plan"
         verbose_name_plural = "Who liked you plans"
+        indexes = [
+            models.Index(
+                fields=["feature", "is_active", "is_default"],
+                name="subplan_feature_active_idx",
+            ),
+        ]
 
     def __str__(self):
         badge = f" · {self.badge}" if self.badge else ""
@@ -105,6 +111,9 @@ class WalletTransaction(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["wallet", "-created_at"], name="wallet_tx_wallet_idx"),
+        ]
 
     def __str__(self):
         sign = "+" if self.amount >= 0 else ""
@@ -197,6 +206,10 @@ class SubscriptionPayment(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "status", "-expires_at"], name="subpay_user_status_idx"),
+            models.Index(fields=["status", "-created_at"], name="subpay_status_created_idx"),
+        ]
 
     def __str__(self):
         return f"{self.user_id} · {self.transaction_uuid} · {self.status}"

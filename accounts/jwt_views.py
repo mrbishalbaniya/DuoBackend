@@ -5,8 +5,11 @@ from rest_framework import permissions, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+from duo_project.security.audit import log_security_event
 
 from .auth_cookies import clear_auth_cookies, set_auth_cookies
 from .security_serializers import DuoTokenObtainPairSerializer
@@ -41,6 +44,17 @@ class CookieTokenObtainPairView(TokenObtainPairView):
         data = serializer.validated_data
         response = Response(data, status=status.HTTP_200_OK)
         set_auth_cookies(response, data["access"], data["refresh"])
+        try:
+            from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+
+            from security.services import security_service
+
+            refresh_jti = str(RefreshToken(data["refresh"])["jti"])
+            access_jti = str(AccessToken(data["access"])["jti"])
+            security_service.register_access_token(access_jti, refresh_jti)
+        except Exception:
+            pass
+        log_security_event("login_success", user_id=getattr(request.user, "id", None))
         return response
 
 
@@ -53,22 +67,34 @@ class CookieTokenRefreshView(TokenRefreshView):
             return Response({"detail": "Refresh token required."}, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
+            token = RefreshToken(refresh)
+            jti = str(token["jti"])
+        except TokenError:
+            return Response({"detail": "Invalid refresh token."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
             from security.services import security_service
 
-            jti = str(RefreshToken(refresh)["jti"])
             if not security_service.is_session_active(jti):
+                log_security_event("refresh_denied_revoked", jti=jti)
                 return Response({"detail": "Session revoked."}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception:
-            pass
+            log_security_event("refresh_session_check_failed", jti=jti)
+            return Response({"detail": "Session validation failed."}, status=status.HTTP_401_UNAUTHORIZED)
 
         serializer = self.get_serializer(data={"refresh": refresh})
         serializer.is_valid(raise_exception=True)
         access = serializer.validated_data["access"]
+        new_refresh = serializer.validated_data.get("refresh", refresh)
         response = Response({"access": access}, status=status.HTTP_200_OK)
-        set_auth_cookies(response, access, refresh)
+        set_auth_cookies(response, access, new_refresh)
         try:
+            from rest_framework_simplejwt.tokens import AccessToken
+
             from security.services import security_service
 
+            access_jti = str(AccessToken(access)["jti"])
+            security_service.register_access_token(access_jti, jti)
             security_service.touch_session(jti)
         except Exception:
             pass
@@ -76,19 +102,41 @@ class CookieTokenRefreshView(TokenRefreshView):
 
 
 class LogoutView(APIView):
-    def post(self, request):
-        refresh = request.data.get("refresh") or request.COOKIES.get("duo_refresh")
-        if refresh:
-            try:
-                from security.services import security_service
-                from security.models import UserSession
+    permission_classes = [permissions.AllowAny]
 
-                jti = str(RefreshToken(refresh)["jti"])
-                session = UserSession.objects.filter(refresh_jti=jti, user=request.user).first()
-                if session:
-                    session.revoke()
+    def post(self, request):
+        from duo_project.security.tokens import revoke_access_token
+
+        refresh = request.data.get("refresh") or request.COOKIES.get("duo_refresh")
+        access = request.data.get("access") or request.COOKIES.get("duo_access")
+        if access:
+            revoke_access_token(access)
+            try:
+                from rest_framework_simplejwt.tokens import AccessToken
+
+                from security.services import security_service
+
+                security_service.revoke_access_session(str(AccessToken(access)["jti"]))
             except Exception:
                 pass
+        if refresh:
+            try:
+                from rest_framework_simplejwt.tokens import RefreshToken
+
+                from security.models import UserSession
+
+                token = RefreshToken(refresh)
+                jti = str(token["jti"])
+                session = UserSession.objects.filter(refresh_jti=jti).first()
+                if session:
+                    session.revoke()
+                    log_security_event("logout_session_revoked", user_id=session.user_id, jti=jti)
+                try:
+                    token.blacklist()
+                except Exception:
+                    pass
+            except Exception:
+                log_security_event("logout_revoke_failed")
         response = Response({"detail": "Logged out."}, status=status.HTTP_200_OK)
         clear_auth_cookies(response)
         return response
@@ -106,6 +154,11 @@ class AuthHandoffCreateView(APIView):
         onboarded = request.data.get("onboarded", False)
         if not access or not refresh:
             return Response({"detail": "Missing tokens."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            RefreshToken(refresh)
+        except TokenError:
+            return Response({"detail": "Invalid tokens."}, status=status.HTTP_400_BAD_REQUEST)
 
         handoff_id = secrets.token_urlsafe(32)
         cache.set(

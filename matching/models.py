@@ -12,6 +12,10 @@ class Swipe(models.Model):
 
     class Meta:
         unique_together = ('from_user', 'to_user')
+        indexes = [
+            models.Index(fields=["from_user", "-created_at"], name="swipe_from_created_idx"),
+            models.Index(fields=["to_user", "action", "-created_at"], name="swipe_to_action_idx"),
+        ]
 
     def __str__(self):
         return f"{self.from_user.username} → {self.action} → {self.to_user.username}"
@@ -35,6 +39,9 @@ class Match(models.Model):
 
     class Meta:
         unique_together = ('user1', 'user2')
+        indexes = [
+            models.Index(fields=["-matched_at"], name="match_matched_at_idx"),
+        ]
 
     def get_other_user(self, user):
         return self.user2 if self.user1 == user else self.user1

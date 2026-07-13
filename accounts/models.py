@@ -106,6 +106,14 @@ class Profile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["is_onboarded", "gender", "age"], name="profile_discover_idx"),
+            models.Index(fields=["is_verified"], name="profile_verified_idx"),
+            models.Index(fields=["-updated_at"], name="profile_updated_idx"),
+            models.Index(fields=["gender"], name="profile_gender_idx"),
+        ]
+
     def is_location_visible_to(self, viewer) -> bool:
         """Whether `viewer` (User or user id) may see this profile's map location."""
         if self.location_ghost_mode:

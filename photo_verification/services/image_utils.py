@@ -52,9 +52,18 @@ def load_image_from_bytes(data: bytes) -> LoadedImage:
 
 
 def load_image_from_file(uploaded_file) -> LoadedImage:
+    return safe_load_image_from_file(uploaded_file)
+
+
+MAX_VERIFICATION_IMAGE_BYTES = 10 * 1024 * 1024
+
+
+def safe_load_image_from_file(uploaded_file, *, max_bytes: int = MAX_VERIFICATION_IMAGE_BYTES) -> LoadedImage:
     uploaded_file.seek(0)
-    data = uploaded_file.read()
+    data = uploaded_file.read(max_bytes + 1)
     uploaded_file.seek(0)
+    if len(data) > max_bytes:
+        raise ValueError(f"Image exceeds maximum size of {max_bytes // (1024 * 1024)}MB.")
     return load_image_from_bytes(data)
 
 

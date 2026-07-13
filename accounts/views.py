@@ -9,7 +9,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
-from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_profile_photo
+from duo_project.cloudinary_media.responses import upload_response_dict
+from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_profile_photo_result
 from photo_verification.constants import PhotoStatus
 from photo_verification.services.pipeline import PhotoVerificationPipeline
 from django.contrib.auth import get_user_model
@@ -18,7 +19,7 @@ from django.db.models import Q
 from django.utils import timezone
 from google.auth.exceptions import GoogleAuthError
 from .auth_cookies import set_auth_cookies
-from .throttling import AuthRateThrottle
+from .throttling import AuthRateThrottle, UploadRateThrottle
 from .serializers import (
     RegisterSerializer,
     UserSerializer,
@@ -43,8 +44,16 @@ from .password_reset import (
 )
 from .models import Profile
 from .geo import profile_coordinates, haversine_km, CITY_COORDS
+from .serializer_context import profile_list_serializer_context
 from matching.models import Swipe
 from matching.profile_visits import record_profile_visit
+from duo_project.cache import api_cache, get_user_cache_version
+from duo_project.cache import keys as cache_keys
+from duo_project.cache import ttl as cache_ttl
+from duo_project.cache.invalidation import invalidate_profile_caches, invalidate_user_caches
+from duo_project.cache.lookups import get_static_lookups
+from duo_project.query_optimization import discover_ordering, get_matched_user_ids
+from duo_project.security.privacy import blocked_user_ids
 
 User = get_user_model()
 
@@ -64,6 +73,9 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        from accounts.email_otp import clear_email_verified
+
+        clear_email_verified(user.email)
         refresh = RefreshToken.for_user(user)
         response = Response({
             'user': UserSerializer(user).data,
@@ -79,7 +91,16 @@ class RegisterView(generics.CreateAPIView):
 class MeView(APIView):
     @extend_schema(tags=["Authentication"], summary="Get current authenticated user")
     def get(self, request):
-        return Response(UserSerializer(request.user).data)
+        def build():
+            return UserSerializer(request.user).data
+
+        data = api_cache.get_or_set(
+            cache_keys.user(request.user.id),
+            build,
+            cache_ttl.USER,
+            label="user_me",
+        )
+        return Response(data)
 
 
 class GoogleAuthView(APIView):
@@ -127,6 +148,7 @@ class GoogleAuthView(APIView):
 
 class GoogleOAuthCallbackView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     def get(self, request):
         error = request.GET.get("error")
@@ -196,10 +218,8 @@ class EmailOtpSendView(APIView):
         email = serializer.validated_data["email"].strip().lower()
 
         if User.objects.filter(email__iexact=email).exists():
-            return Response(
-                {"detail": "An account with this email already exists."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            # Prevent email enumeration — same response shape as success.
+            return Response({"sent": True, "email": email}, status=status.HTTP_200_OK)
 
         try:
             send_email_otp(email)
@@ -379,7 +399,17 @@ class PasswordChangeView(APIView):
 class MyProfileView(APIView):
     @extend_schema(tags=["Profiles"], summary="Get my profile")
     def get(self, request):
-        return Response(ProfileSerializer(request.user.profile).data)
+        def build():
+            context = profile_list_serializer_context(request, [request.user.profile])
+            return ProfileSerializer(request.user.profile, context=context).data
+
+        data = api_cache.get_or_set(
+            cache_keys.profile(request.user.profile.id),
+            build,
+            cache_ttl.PROFILE,
+            label="profile_me",
+        )
+        return Response(data)
 
     @extend_schema(
         tags=["Profiles"],
@@ -396,6 +426,7 @@ class MyProfileView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        invalidate_profile_caches(request.user.profile.id, request.user.id, reason="profile_update")
         return Response(serializer.data)
 
 
@@ -403,6 +434,7 @@ class ProfilePhotoUploadView(APIView):
     """Upload a profile photo during registration or profile editing."""
 
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+    throttle_classes = [UploadRateThrottle]
 
     @extend_schema(
         tags=["Profiles"],
@@ -425,7 +457,8 @@ class ProfilePhotoUploadView(APIView):
         try:
             result = pipeline.analyze_file(image, user_id=request.user.id)
         except Exception as exc:
-            return Response({"detail": f"Image analysis failed: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
+            detail = f"Image analysis failed: {exc}" if settings.DEBUG else "Image analysis failed."
+            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
         if not result.face_detected:
             return Response(
@@ -442,13 +475,18 @@ class ProfilePhotoUploadView(APIView):
 
         try:
             image.seek(0)
-            image_url = upload_profile_photo(image, user_id=request.user.id)
+            upload_result = upload_profile_photo_result(
+                image,
+                user_id=request.user.id,
+                replace_url=getattr(request.user.profile, "photo_url", None) or None,
+            )
         except CloudinaryNotConfiguredError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({"image_url": image_url}, status=status.HTTP_201_CREATED)
+        invalidate_profile_caches(request.user.profile.id, request.user.id, reason="photo_upload")
+        return Response(upload_response_dict(upload_result), status=status.HTTP_201_CREATED)
 
 
 class DiscoverView(APIView):
@@ -460,13 +498,34 @@ class DiscoverView(APIView):
         responses={200: ProfileSerializer(many=True)},
     )
     def get(self, request):
+        version = get_user_cache_version(request.user.id)
+        cache_key = cache_keys.discover(request.user.id, version)
+
+        def build():
+            return self._build_discover_payload(request)
+
+        data = api_cache.get_or_set(
+            cache_key,
+            build,
+            cache_ttl.DISCOVER,
+            label="discover",
+        )
+        return Response(data)
+
+    @staticmethod
+    def _build_discover_payload(request):
         user_profile = request.user.profile
         swiped_ids = Swipe.objects.filter(from_user=request.user).values_list(
             "to_user_id", flat=True
         )
+        matched_ids = get_matched_user_ids(request.user)
+        blocked = blocked_user_ids(request.user.id)
         profiles = (
-            Profile.objects.exclude(user=request.user)
+            Profile.objects.select_related("user")
+            .exclude(user=request.user)
             .exclude(user_id__in=swiped_ids)
+            .exclude(user_id__in=matched_ids)
+            .exclude(user_id__in=blocked)
             .filter(is_onboarded=True)
         )
 
@@ -506,7 +565,7 @@ class DiscoverView(APIView):
                 if city_part:
                     profiles = profiles.filter(location__icontains=city_part)
 
-        candidates = list(profiles.order_by("?")[:40])
+        candidates = list(discover_ordering(profiles, request.user.id)[:40])
         user_coords = profile_coordinates(
             user_profile.location, user_profile.user_id
         )
@@ -520,21 +579,52 @@ class DiscoverView(APIView):
             if len(filtered) >= 10:
                 break
 
-        return Response(ProfileSerializer(filtered, many=True).data)
+        context = profile_list_serializer_context(request, filtered)
+        return ProfileSerializer(filtered, many=True, context=context).data
+
+
+class ProfileLookupsView(APIView):
+    """Cached static profile/discovery lookup tables."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(tags=["Profiles"], summary="Get static profile lookup tables")
+    def get(self, request):
+        return Response(get_static_lookups())
 
 
 @extend_schema_view(
     get=extend_schema(tags=["Profiles"], summary="Get profile by ID"),
 )
 class ProfileDetailView(generics.RetrieveAPIView):
-    queryset = Profile.objects.all()
+    queryset = Profile.objects.select_related("user")
     serializer_class = ProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def retrieve(self, request, *args, **kwargs):
         profile = self.get_object()
         record_profile_visit(request.user, profile.user)
-        return super().retrieve(request, *args, **kwargs)
+
+        cache_key = cache_keys.profile_public(
+            profile.id,
+            request.user.id,
+            get_user_cache_version(profile.user_id),
+        )
+
+        def build():
+            serializer = self.get_serializer(
+                profile,
+                context=profile_list_serializer_context(request, [profile]),
+            )
+            return serializer.data
+
+        data = api_cache.get_or_set(
+            cache_key,
+            build,
+            cache_ttl.PROFILE_PUBLIC,
+            label="profile_detail",
+        )
+        return Response(data)
 
 
 class ProfileVisitRecordView(APIView):

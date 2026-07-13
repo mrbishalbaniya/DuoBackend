@@ -44,7 +44,7 @@ class LikedProfileSerializer(serializers.Serializer):
     def get_profile(self, obj):
         request_user = self.context.get('request').user
         other_user = obj.to_user if obj.from_user_id == request_user.id else obj.from_user
-        return ProfileSerializer(other_user.profile).data
+        return ProfileSerializer(other_user.profile, context=self.context).data
 
     def get_locked(self, obj):
         return bool(self.context.get('locked', False))
@@ -71,7 +71,7 @@ class VisitedProfileSerializer(serializers.Serializer):
     locked = serializers.SerializerMethodField()
 
     def get_profile(self, obj):
-        return ProfileSerializer(obj.viewer.profile).data
+        return ProfileSerializer(obj.viewer.profile, context=self.context).data
 
     def get_locked(self, obj):
         return bool(self.context.get("locked", False))

@@ -55,6 +55,11 @@ class MessageSerializer(serializers.ModelSerializer):
     def get_is_deleted_for_me(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
+            if (
+                hasattr(obj, "_prefetched_objects_cache")
+                and "deleted_by" in obj._prefetched_objects_cache
+            ):
+                return any(user.id == request.user.id for user in obj.deleted_by.all())
             return obj.deleted_by.filter(id=request.user.id).exists()
         return False
 
@@ -119,12 +124,19 @@ class ConversationSerializer(serializers.ModelSerializer):
         return ProfileSerializer(other_user.profile).data
 
     def get_other_user_nickname(self, obj):
+        prefs = getattr(obj, "user_preferences", None)
+        if prefs:
+            pref = prefs[0] if prefs else None
+            return pref.nickname if pref else ''
         request_user = self.context.get('request').user
         pref = obj.preferences.filter(user=request_user).first()
         return pref.nickname if pref else ''
 
     def get_last_message(self, obj):
-        msg = obj.messages.order_by('-timestamp', '-id').first()
+        last_messages = self.context.get("last_messages") or {}
+        msg = last_messages.get(getattr(obj, "last_message_id", None))
+        if msg is None:
+            msg = obj.messages.order_by('-timestamp', '-id').first()
         if msg:
             return MessageSerializer(msg, context=self.context).data
         return None
@@ -155,6 +167,9 @@ class ConversationSerializer(serializers.ModelSerializer):
         )
 
     def _get_user_pref(self, obj):
+        prefs = getattr(obj, "user_preferences", None)
+        if prefs is not None:
+            return prefs[0] if prefs else None
         request = self.context.get('request')
         if not request or not request.user.is_authenticated:
             return None
@@ -185,6 +200,14 @@ class SendMessageSerializer(serializers.Serializer):
     content = serializers.CharField(required=False, allow_blank=True, default='')
     image_url = serializers.CharField(required=False, allow_blank=True, default='')
     reply_to_id = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate_image_url(self, value):
+        from duo_project.security.media_urls import validate_media_url_or_raise
+
+        try:
+            return validate_media_url_or_raise(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
 
     def validate_reply_to_id(self, value):
         if value is None:

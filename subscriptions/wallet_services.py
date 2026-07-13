@@ -18,6 +18,7 @@ from .services import (
 )
 
 MIN_TOP_UP_AMOUNT = Decimal("100")
+MAX_TOP_UP_AMOUNT = Decimal("500000")
 TOP_UP_PRESETS = [500, 1000, 2000, 5000]
 
 
@@ -142,6 +143,8 @@ def create_topup_request(user, amount: int | Decimal) -> tuple[WalletTopUp, dict
     total = Decimal(str(amount))
     if total < MIN_TOP_UP_AMOUNT:
         raise ValueError(f"Minimum top-up is NPR {MIN_TOP_UP_AMOUNT:.0f}.")
+    if total > MAX_TOP_UP_AMOUNT:
+        raise ValueError(f"Maximum top-up is NPR {MAX_TOP_UP_AMOUNT:.0f}.")
 
     tax_amount = Decimal("0")
     service_charge = Decimal("0")
@@ -199,31 +202,33 @@ def activate_topup(
     ref_id: str = "",
     transaction_code: str = "",
 ) -> None:
-    if topup.status == WalletTopUp.STATUS_COMPLETE:
-        return
+    with transaction.atomic():
+        locked = WalletTopUp.objects.select_for_update().get(pk=topup.pk)
+        if locked.status == WalletTopUp.STATUS_COMPLETE:
+            return
 
-    now = timezone.now()
-    topup.status = WalletTopUp.STATUS_COMPLETE
-    topup.paid_at = now
-    topup.esewa_ref_id = ref_id or topup.esewa_ref_id
-    topup.esewa_transaction_code = transaction_code or topup.esewa_transaction_code
-    topup.save(
-        update_fields=[
-            "status",
-            "paid_at",
-            "esewa_ref_id",
-            "esewa_transaction_code",
-            "updated_at",
-        ]
-    )
+        now = timezone.now()
+        locked.status = WalletTopUp.STATUS_COMPLETE
+        locked.paid_at = now
+        locked.esewa_ref_id = ref_id or locked.esewa_ref_id
+        locked.esewa_transaction_code = transaction_code or locked.esewa_transaction_code
+        locked.save(
+            update_fields=[
+                "status",
+                "paid_at",
+                "esewa_ref_id",
+                "esewa_transaction_code",
+                "updated_at",
+            ]
+        )
 
-    credit_wallet(
-        topup.user,
-        topup.total_amount,
-        tx_type=WalletTransaction.TYPE_TOP_UP,
-        description=f"Wallet top-up via eSewa",
-        reference_id=topup.transaction_uuid,
-    )
+        credit_wallet(
+            locked.user,
+            locked.total_amount,
+            tx_type=WalletTransaction.TYPE_TOP_UP,
+            description="Wallet top-up via eSewa",
+            reference_id=locked.transaction_uuid,
+        )
 
 
 def purchase_plan_with_wallet(user, plan_id: str | None = None) -> SubscriptionPayment:

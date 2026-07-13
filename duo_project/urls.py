@@ -6,25 +6,22 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAdminUser
 
 from duo_project.admin_account import admin_account
 from duo_project.health import health_check
 
 
-class PublicSchemaView(SpectacularAPIView):
-    permission_classes = [AllowAny]
-    authentication_classes = []
+class StaffSchemaView(SpectacularAPIView):
+    permission_classes = [IsAdminUser]
 
 
-class PublicSwaggerView(SpectacularSwaggerView):
-    permission_classes = [AllowAny]
-    authentication_classes = []
+class StaffSwaggerView(SpectacularSwaggerView):
+    permission_classes = [IsAdminUser]
 
 
-class PublicRedocView(SpectacularRedocView):
-    permission_classes = [AllowAny]
-    authentication_classes = []
+class StaffRedocView(SpectacularRedocView):
+    permission_classes = [IsAdminUser]
 
 
 urlpatterns = [
@@ -35,6 +32,7 @@ urlpatterns = [
     path("api/profiles/", include("accounts.profile_urls")),
     path("api/matching/", include("matching.urls")),
     path("api/chat/", include("chat.urls")),
+    path("api/calls/", include("calls.urls")),
     path("api/subscriptions/", include("subscriptions.urls")),
     path("api/wallet/", include("subscriptions.wallet_urls")),
     path("api/photos/", include("photo_verification.urls")),
@@ -69,15 +67,15 @@ if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 else:
     urlpatterns += [
-        path("api/schema/", PublicSchemaView.as_view(), name="schema"),
+        path("api/schema/", StaffSchemaView.as_view(), name="schema"),
         path(
             "api/docs/",
-            PublicSwaggerView.as_view(url_name="schema"),
+            StaffSwaggerView.as_view(url_name="schema"),
             name="swagger-ui",
         ),
         path(
             "api/docs/redoc/",
-            PublicRedocView.as_view(url_name="schema"),
+            StaffRedocView.as_view(url_name="schema"),
             name="redoc",
         ),
     ]

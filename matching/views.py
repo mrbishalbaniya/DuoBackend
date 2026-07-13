@@ -17,12 +17,21 @@ from .serializers import (
     VisitedProfileSerializer,
     mask_profile_for_paywall,
 )
+from accounts.throttling import SwipeRateThrottle
 from chat.models import Conversation
+from chat.services import users_are_blocked
 from subscriptions.services import user_has_active_subscription
+from duo_project.query_optimization import apply_list_window, get_matched_user_ids
+from duo_project.cache import api_cache, get_user_cache_version
+from duo_project.cache import keys as cache_keys
+from duo_project.cache import ttl as cache_ttl
+from .serializer_context import matching_list_context, profiles_from_swipes, profiles_from_visits
 
 
 class SwipeView(APIView):
     """Record a swipe and check for mutual match."""
+
+    throttle_classes = [SwipeRateThrottle]
 
     @extend_schema(
         tags=["Matching"],
@@ -40,6 +49,9 @@ class SwipeView(APIView):
             to_user = User.objects.get(id=to_user_id)
         except User.DoesNotExist:
             return Response({'error': 'User not found'}, status=404)
+
+        if users_are_blocked(request.user, to_user):
+            return Response({"error": "User not available"}, status=403)
 
         self._upsert_swipe(request.user, to_user, action)
 
@@ -138,10 +150,7 @@ class SwipeView(APIView):
 
 
 def _matched_user_ids(user):
-    ids = set()
-    for match in Match.objects.filter(Q(user1=user) | Q(user2=user)):
-        ids.add(match.get_other_user(user).id)
-    return ids
+    return get_matched_user_ids(user)
 
 
 class MatchListView(APIView):
@@ -153,11 +162,31 @@ class MatchListView(APIView):
         responses={200: MatchSerializer(many=True)},
     )
     def get(self, request):
-        matches = Match.objects.filter(
-            Q(user1=request.user) | Q(user2=request.user)
-        ).order_by('-matched_at')
-        serializer = MatchSerializer(matches, many=True, context={'request': request})
-        return Response(serializer.data)
+        version = get_user_cache_version(request.user.id)
+        limit, offset = cache_keys.list_window_suffix(request)
+        cache_key = cache_keys.matches(request.user.id, version, limit, offset)
+
+        def build():
+            matches = apply_list_window(
+                Match.objects.filter(Q(user1=request.user) | Q(user2=request.user))
+                .select_related("user1__profile", "user2__profile")
+                .order_by("-matched_at"),
+                request,
+                default_limit=200,
+                max_limit=500,
+            )
+            profiles = []
+            for match in matches:
+                profiles.append(match.get_other_user(request.user).profile)
+            return MatchSerializer(
+                matches,
+                many=True,
+                context=matching_list_context(request, profiles),
+            ).data
+
+        return Response(
+            api_cache.get_or_set(cache_key, build, cache_ttl.MATCHES, label="matches")
+        )
 
 
 class LikedByYouView(APIView):
@@ -169,18 +198,34 @@ class LikedByYouView(APIView):
         responses={200: LikedProfileSerializer(many=True)},
     )
     def get(self, request):
-        matched_ids = _matched_user_ids(request.user)
-        swipes = (
-            Swipe.objects.filter(
-                from_user=request.user,
-                action__in=['LIKE', 'SUPERLIKE'],
+        version = get_user_cache_version(request.user.id)
+        limit, offset = cache_keys.list_window_suffix(request)
+        cache_key = cache_keys.liked_by_you(request.user.id, version, limit, offset)
+
+        def build():
+            matched_ids = _matched_user_ids(request.user)
+            swipes = apply_list_window(
+                Swipe.objects.filter(
+                    from_user=request.user,
+                    action__in=['LIKE', 'SUPERLIKE'],
+                )
+                .exclude(to_user_id__in=matched_ids)
+                .select_related('to_user__profile')
+                .order_by('-created_at'),
+                request,
+                default_limit=200,
+                max_limit=500,
             )
-            .exclude(to_user_id__in=matched_ids)
-            .select_related('to_user__profile')
-            .order_by('-created_at')
+            profiles = profiles_from_swipes(swipes, request.user)
+            return LikedProfileSerializer(
+                swipes,
+                many=True,
+                context=matching_list_context(request, profiles),
+            ).data
+
+        return Response(
+            api_cache.get_or_set(cache_key, build, cache_ttl.LIKES_OUT, label="liked_by_you")
         )
-        serializer = LikedProfileSerializer(swipes, many=True, context={'request': request})
-        return Response(serializer.data)
 
 
 class LikesYouView(APIView):
@@ -192,47 +237,57 @@ class LikesYouView(APIView):
         responses={200: LikedProfileSerializer(many=True)},
     )
     def get(self, request):
-        matched_ids = _matched_user_ids(request.user)
-        liked_back_ids = Swipe.objects.filter(
-            from_user=request.user,
-            action__in=['LIKE', 'SUPERLIKE'],
-        ).values_list('to_user_id', flat=True)
+        version = get_user_cache_version(request.user.id)
+        limit, offset = cache_keys.list_window_suffix(request)
+        cache_key = cache_keys.likes_you(request.user.id, version, limit, offset)
 
-        swipes = (
-            Swipe.objects.filter(
-                to_user=request.user,
+        def build():
+            matched_ids = _matched_user_ids(request.user)
+            liked_back_ids = Swipe.objects.filter(
+                from_user=request.user,
                 action__in=['LIKE', 'SUPERLIKE'],
-            )
-            .exclude(from_user_id__in=matched_ids)
-            .exclude(from_user_id__in=liked_back_ids)
-            .select_related('from_user__profile')
-            .order_by('-created_at')
-        )
+            ).values_list('to_user_id', flat=True)
 
-        is_premium = user_has_active_subscription(request.user)
-        serializer = LikedProfileSerializer(
-            swipes,
-            many=True,
-            context={'request': request, 'locked': not is_premium},
-        )
-        results = serializer.data
-
-        if not is_premium:
-            for item in results:
-                original = item.get('profile') or {}
-                item['locked'] = True
-                item['profile'] = mask_profile_for_paywall(
-                    original,
-                    swipe_id=item.get('swipe_id'),
+            swipes = apply_list_window(
+                Swipe.objects.filter(
+                    to_user=request.user,
+                    action__in=['LIKE', 'SUPERLIKE'],
                 )
+                .exclude(from_user_id__in=matched_ids)
+                .exclude(from_user_id__in=liked_back_ids)
+                .select_related('from_user__profile')
+                .order_by('-created_at'),
+                request,
+                default_limit=200,
+                max_limit=500,
+            )
 
-        return Response(
-            {
+            is_premium = user_has_active_subscription(request.user)
+            profiles = profiles_from_swipes(swipes, request.user)
+            results = LikedProfileSerializer(
+                swipes,
+                many=True,
+                context=matching_list_context(request, profiles, locked=not is_premium),
+            ).data
+
+            if not is_premium:
+                for item in results:
+                    original = item.get('profile') or {}
+                    item['locked'] = True
+                    item['profile'] = mask_profile_for_paywall(
+                        original,
+                        swipe_id=item.get('swipe_id'),
+                    )
+
+            return {
                 'is_premium': is_premium,
                 'premium_required': not is_premium and len(results) > 0,
                 'count': len(results),
                 'results': results,
             }
+
+        return Response(
+            api_cache.get_or_set(cache_key, build, cache_ttl.LIKES_IN, label="likes_you")
         )
 
 
@@ -245,37 +300,47 @@ class ProfileVisitorsView(APIView):
         responses={200: VisitedProfileSerializer(many=True)},
     )
     def get(self, request):
-        visits = (
-            ProfileVisit.objects.filter(viewed_user=request.user)
-            .exclude(viewer=request.user)
-            .select_related("viewer__profile")
-            .order_by("-last_visited_at")
-        )
+        version = get_user_cache_version(request.user.id)
+        limit, offset = cache_keys.list_window_suffix(request)
+        cache_key = cache_keys.profile_visitors(request.user.id, version, limit, offset)
 
-        is_premium = user_has_active_subscription(request.user)
-        serializer = VisitedProfileSerializer(
-            visits,
-            many=True,
-            context={"request": request, "locked": not is_premium},
-        )
-        results = serializer.data
+        def build():
+            visits = apply_list_window(
+                ProfileVisit.objects.filter(viewed_user=request.user)
+                .exclude(viewer=request.user)
+                .select_related("viewer__profile")
+                .order_by("-last_visited_at"),
+                request,
+                default_limit=200,
+                max_limit=500,
+            )
 
-        if not is_premium:
-            for item, visit in zip(results, visits):
-                original = item.get("profile") or {}
-                item["locked"] = True
-                item["profile"] = mask_profile_for_paywall(
-                    original,
-                    visit_id=visit.id,
-                )
+            is_premium = user_has_active_subscription(request.user)
+            profiles = profiles_from_visits(visits)
+            results = VisitedProfileSerializer(
+                visits,
+                many=True,
+                context=matching_list_context(request, profiles, locked=not is_premium),
+            ).data
 
-        return Response(
-            {
+            if not is_premium:
+                for item, visit in zip(results, visits):
+                    original = item.get("profile") or {}
+                    item["locked"] = True
+                    item["profile"] = mask_profile_for_paywall(
+                        original,
+                        visit_id=visit.id,
+                    )
+
+            return {
                 "is_premium": is_premium,
                 "premium_required": not is_premium and len(results) > 0,
                 "count": len(results),
                 "results": results,
             }
+
+        return Response(
+            api_cache.get_or_set(cache_key, build, cache_ttl.VISITORS, label="profile_visitors")
         )
 
 
@@ -288,16 +353,32 @@ class SkippedByYouView(APIView):
         responses={200: LikedProfileSerializer(many=True)},
     )
     def get(self, request):
-        swipes = (
-            Swipe.objects.filter(
-                from_user=request.user,
-                action='SKIP',
+        version = get_user_cache_version(request.user.id)
+        limit, offset = cache_keys.list_window_suffix(request)
+        cache_key = cache_keys.skipped_by_you(request.user.id, version, limit, offset)
+
+        def build():
+            swipes = apply_list_window(
+                Swipe.objects.filter(
+                    from_user=request.user,
+                    action='SKIP',
+                )
+                .select_related('to_user__profile')
+                .order_by('-created_at'),
+                request,
+                default_limit=200,
+                max_limit=500,
             )
-            .select_related('to_user__profile')
-            .order_by('-created_at')
+            profiles = profiles_from_swipes(swipes, request.user)
+            return LikedProfileSerializer(
+                swipes,
+                many=True,
+                context=matching_list_context(request, profiles),
+            ).data
+
+        return Response(
+            api_cache.get_or_set(cache_key, build, cache_ttl.LIKES_OUT, label="skipped_by_you")
         )
-        serializer = LikedProfileSerializer(swipes, many=True, context={'request': request})
-        return Response(serializer.data)
 
 
 @extend_schema_view(
@@ -310,9 +391,29 @@ class MatchInsightView(RetrieveAPIView):
     def get_queryset(self):
         return Match.objects.filter(
             Q(user1=self.request.user) | Q(user2=self.request.user)
-        )
+        ).select_related("user1__profile", "user2__profile")
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context['request'] = self.request
+        match = self.get_object()
+        other_profile = match.get_other_user(self.request.user).profile
+        context.update(matching_list_context(self.request, [other_profile]))
         return context
+
+    def retrieve(self, request, *args, **kwargs):
+        match = self.get_object()
+        cache_key = cache_keys.match_insight(match.id, request.user.id)
+
+        def build():
+            other_profile = match.get_other_user(request.user).profile
+            context = super().get_serializer_context()
+            context.update(matching_list_context(request, [other_profile]))
+            return MatchSerializer(match, context=context).data
+
+        data = api_cache.get_or_set(
+            cache_key,
+            build,
+            cache_ttl.MATCH_INSIGHT,
+            label="match_insight",
+        )
+        return Response(data)

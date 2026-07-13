@@ -7,6 +7,10 @@ from rest_framework.views import APIView
 from .defaults import DEFAULT_AVATAR_CONFIG, merge_avatar_config
 from .models import AvatarConfig, AvatarOutfit
 from .serializers import AvatarConfigSerializer, AvatarOutfitSerializer
+from duo_project.cache import api_cache
+from duo_project.cache import keys as cache_keys
+from duo_project.cache import ttl as cache_ttl
+from duo_project.cache.invalidation import invalidate_avatar
 
 
 class MyAvatarView(APIView):
@@ -14,19 +18,24 @@ class MyAvatarView(APIView):
 
     @extend_schema(tags=["Avatars"])
     def get(self, request):
-        try:
-            row = AvatarConfig.objects.get(user=request.user)
-            data = AvatarConfigSerializer(row).data
-            data["config"] = merge_avatar_config(row.config)
-            return Response(data)
-        except AvatarConfig.DoesNotExist:
-            return Response(
-                {
+        cache_key = cache_keys.avatar(request.user.id)
+
+        def build():
+            try:
+                row = AvatarConfig.objects.get(user=request.user)
+                data = AvatarConfigSerializer(row).data
+                data["config"] = merge_avatar_config(row.config)
+                return data
+            except AvatarConfig.DoesNotExist:
+                return {
                     "config": dict(DEFAULT_AVATAR_CONFIG),
                     "version": 1,
                     "updated_at": None,
                 }
-            )
+
+        return Response(
+            api_cache.get_or_set(cache_key, build, cache_ttl.PROFILE, label="avatar")
+        )
 
     @extend_schema(tags=["Avatars"])
     def put(self, request):
@@ -37,6 +46,7 @@ class MyAvatarView(APIView):
             user=request.user,
             defaults={"config": config, "version": 1},
         )
+        invalidate_avatar(request.user.id)
         return Response(AvatarConfigSerializer(row).data)
 
     @extend_schema(tags=["Avatars"])

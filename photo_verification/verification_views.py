@@ -11,9 +11,14 @@ from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_v
 from photo_verification.constants import LIVENESS_STEPS, VerificationStatus
 from photo_verification.handoff import build_handoff_url, send_verification_handoff_email
 from photo_verification.models import UserVerification
-from photo_verification.services.image_utils import load_image_from_file
+from photo_verification.services.image_utils import (
+    MAX_VERIFICATION_IMAGE_BYTES,
+    load_image_from_file,
+    safe_load_image_from_file,
+)
 from photo_verification.services.liveness_detection import capture_baseline_metrics, validate_liveness_step
 from photo_verification.services.verification_engine import VerificationEngine
+from photo_verification.throttling import VerificationHandoffThrottle
 from photo_verification.verification_serializers import (
     LivenessStepResponseSerializer,
     UserVerificationSerializer,
@@ -122,6 +127,7 @@ class VerificationLivenessView(APIView):
     """Submit a liveness challenge frame (smile, blink, head_left, head_right)."""
 
     permission_classes = [AllowAny]
+    throttle_classes = [VerificationHandoffThrottle]
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
 
     @extend_schema(
@@ -154,7 +160,10 @@ class VerificationLivenessView(APIView):
         if session.verification_status != VerificationStatus.PENDING.value:
             return Response({"detail": "Session is no longer active."}, status=400)
 
-        loaded = load_image_from_file(image)
+        try:
+            loaded = load_image_from_file(image)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         liveness_data = dict(session.liveness_data or {})
         baseline_key = _baseline_key(step)
         baseline = liveness_data.get(baseline_key) or {}
@@ -219,6 +228,7 @@ class VerificationLivenessView(APIView):
 
 class VerificationSelfieView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [VerificationHandoffThrottle]
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
 
     @extend_schema(
@@ -246,10 +256,20 @@ class VerificationSelfieView(APIView):
         if not session:
             return Response({"detail": "Invalid or expired session."}, status=404)
 
+        try:
+            safe_load_image_from_file(image)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
         engine = VerificationEngine()
         image.seek(0)
-        selfie_bytes = image.read()
+        selfie_bytes = image.read(MAX_VERIFICATION_IMAGE_BYTES + 1)
         image.seek(0)
+        if len(selfie_bytes) > MAX_VERIFICATION_IMAGE_BYTES:
+            return Response(
+                {"detail": f"Image exceeds maximum size of {MAX_VERIFICATION_IMAGE_BYTES // (1024 * 1024)}MB."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             selfie_url = upload_verification_selfie(image, user_id=session.user_id)
@@ -275,6 +295,7 @@ class VerificationSessionView(APIView):
     """Poll an active verification session (token-based handoff, no login required)."""
 
     permission_classes = [AllowAny]
+    throttle_classes = [VerificationHandoffThrottle]
 
     @extend_schema(
         tags=["Verification"],

@@ -53,6 +53,9 @@ class ConversationPreference(models.Model):
 
     class Meta:
         unique_together = ('user', 'conversation')
+        indexes = [
+            models.Index(fields=["user", "is_archived"], name="convpref_user_arch_idx"),
+        ]
 
     def __str__(self):
         return f"{self.user_id} nickname for conversation {self.conversation_id}"
@@ -124,6 +127,13 @@ class Message(models.Model):
 
     class Meta:
         ordering = ['timestamp']
+        indexes = [
+            models.Index(fields=["conversation", "-timestamp"], name="msg_convo_ts_idx"),
+            models.Index(
+                fields=["conversation", "is_read", "sender"],
+                name="msg_convo_read_sender_idx",
+            ),
+        ]
 
     def __str__(self):
         if self.is_deleted_for_everyone:
