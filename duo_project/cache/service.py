@@ -98,9 +98,16 @@ class ApiCacheService:
         try:
             return cache.incr(key)
         except ValueError:
-            cache.set(key, default + 1, None)
+            # Key missing: seed it. Guard the set too so a broken cache
+            # backend can never raise into request/signal handlers.
+            try:
+                cache.set(key, default + 1, None)
+            except Exception as exc:
+                self._record("error", label)
+                logger.warning("cache_incr_seed_failed key=%s error=%s", key, exc)
             return default + 1
         except Exception as exc:
+            self._record("error", label)
             logger.warning("cache_incr_failed key=%s error=%s", key, exc)
             return default
 

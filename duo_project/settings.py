@@ -160,6 +160,17 @@ CHANNEL_LAYERS = {
 }
 
 _redis_url = env("REDIS_URL").strip().strip('"').strip("'")
+if _redis_url and not _redis_url.startswith(("redis://", "rediss://", "unix://")):
+    # A schemeless value (e.g. "host:6379") makes redis-py raise on every
+    # request. Treat it as unconfigured so the app degrades to local cache.
+    import warnings
+
+    warnings.warn(
+        "REDIS_URL is set but missing a redis://, rediss://, or unix:// scheme; "
+        "ignoring it and falling back to in-memory cache.",
+        RuntimeWarning,
+    )
+    _redis_url = ""
 REDIS_URL = _redis_url
 _redis_cache_options: dict = {}
 _redis_ssl_verify = config("REDIS_SSL_VERIFY", default=False, cast=bool)
