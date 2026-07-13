@@ -12,6 +12,7 @@ from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_
 from .models import Swipe, Match, ProfileVisit
 from .serializers import (
     SwipeSerializer,
+    UnlikeSerializer,
     MatchSerializer,
     LikedProfileSerializer,
     VisitedProfileSerializer,
@@ -22,6 +23,7 @@ from chat.models import Conversation
 from chat.services import users_are_blocked
 from subscriptions.services import user_has_active_subscription
 from duo_project.query_optimization import apply_list_window, get_matched_user_ids
+from duo_project.cache.invalidation import invalidate_user_caches
 from duo_project.cache import api_cache, get_user_cache_version
 from duo_project.cache import keys as cache_keys
 from duo_project.cache import ttl as cache_ttl
@@ -92,6 +94,48 @@ class SwipeView(APIView):
             'is_match': is_match,
             'match': match_data,
         })
+
+
+class UnlikeView(APIView):
+    """Remove a pending like or superlike before a match is formed."""
+
+    @extend_schema(
+        tags=["Matching"],
+        summary="Unlike a profile (withdraw sent like)",
+        request=UnlikeSerializer,
+    )
+    def post(self, request):
+        serializer = UnlikeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        to_user_id = serializer.validated_data["to_user_id"]
+        swipe = (
+            Swipe.objects.filter(
+                from_user=request.user,
+                to_user_id=to_user_id,
+                action__in=["LIKE", "SUPERLIKE"],
+            )
+            .select_related("to_user")
+            .first()
+        )
+        if swipe is None:
+            return Response({"detail": "Like not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        matched = Match.objects.filter(
+            Q(user1=request.user, user2_id=to_user_id)
+            | Q(user1_id=to_user_id, user2=request.user)
+        ).exists()
+        if matched:
+            return Response(
+                {"detail": "Cannot unlike someone you are matched with."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        other_user_id = swipe.to_user_id
+        swipe.delete()
+        invalidate_user_caches(request.user.id, reason="unlike")
+        invalidate_user_caches(other_user_id, reason="unlike")
+        return Response({"detail": "Like removed."})
 
     @staticmethod
     def _upsert_swipe(from_user, to_user, action, *, attempts: int = 5):

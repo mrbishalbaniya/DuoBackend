@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     SwipeView,
+    UnlikeView,
     MatchListView,
     MatchInsightView,
     LikedByYouView,
@@ -11,6 +12,7 @@ from .views import (
 
 urlpatterns = [
     path('swipe/', SwipeView.as_view(), name='swipe'),
+    path('unlike/', UnlikeView.as_view(), name='unlike'),
     path('matches/', MatchListView.as_view(), name='match_list'),
     path('liked-by-you/', LikedByYouView.as_view(), name='liked_by_you'),
     path('likes-you/', LikesYouView.as_view(), name='likes_you'),

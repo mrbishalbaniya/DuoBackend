@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 
 from django.contrib.auth import get_user_model
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 
 from accounts.models import Profile
-from chat.models import ConversationPreference, Message
+from chat.models import ConversationPreference, Message, UserBlock
 from matching.models import Match, ProfileVisit, Swipe
 from security.models import SecurityEvent
 from photo_verification.constants import VerificationStatus
@@ -42,6 +42,18 @@ def user_cache_invalidate(sender, instance, **kwargs):
 def swipe_cache_invalidate(sender, instance, **kwargs):
     invalidate_user_caches(instance.from_user_id, reason="swipe")
     invalidate_user_caches(instance.to_user_id, reason="swipe")
+
+
+@receiver(post_delete, sender=Swipe)
+def swipe_delete_cache_invalidate(sender, instance, **kwargs):
+    invalidate_user_caches(instance.from_user_id, reason="swipe_delete")
+    invalidate_user_caches(instance.to_user_id, reason="swipe_delete")
+
+
+@receiver(post_save, sender=UserBlock)
+def user_block_cache_invalidate(sender, instance, **kwargs):
+    invalidate_user_caches(instance.blocker_id, reason="block")
+    invalidate_user_caches(instance.blocked_id, reason="block")
 
 
 @receiver(post_save, sender=Match)

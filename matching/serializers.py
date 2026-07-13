@@ -8,6 +8,10 @@ class SwipeSerializer(serializers.Serializer):
     action = serializers.ChoiceField(choices=['LIKE', 'SKIP', 'SUPERLIKE'])
 
 
+class UnlikeSerializer(serializers.Serializer):
+    to_user_id = serializers.IntegerField()
+
+
 class MatchSerializer(serializers.ModelSerializer):
     other_user_profile = serializers.SerializerMethodField()
 

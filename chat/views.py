@@ -14,8 +14,9 @@ from accounts.throttling import AuthRateThrottle, UploadRateThrottle
 from duo_project.cloudinary_media.responses import upload_response_dict
 from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_chat_media_result
 from drf_spectacular.utils import OpenApiResponse, extend_schema
-from matching.models import Swipe
+from matching.models import Match, Swipe
 from accounts.serializer_context import profile_list_serializer_context
+from duo_project.cache.invalidation import invalidate_match_users, invalidate_user_caches
 from duo_project.cache import api_cache, get_user_cache_version
 from duo_project.cache import keys as cache_keys
 from duo_project.cache import ttl as cache_ttl
@@ -77,6 +78,28 @@ def get_user_conversation(conversation_id, user):
         return None, Response({'detail': 'This conversation is unavailable.'}, status=status.HTTP_403_FORBIDDEN)
 
     return convo, None
+
+
+def _conversation_other_user(convo, user):
+    return convo.match.get_other_user(user)
+
+
+def _set_mutual_swipes_to_skip(user, other_user):
+    Swipe.objects.update_or_create(
+        from_user=user,
+        to_user=other_user,
+        defaults={"action": "SKIP"},
+    )
+    Swipe.objects.update_or_create(
+        from_user=other_user,
+        to_user=user,
+        defaults={"action": "SKIP"},
+    )
+
+
+def _delete_match_and_invalidate(convo, user, other_user):
+    convo.match.delete()
+    invalidate_match_users(user.id, other_user.id, reason="unmatch")
 
 
 class ConversationListView(APIView):
@@ -540,6 +563,45 @@ class ConversationUnmatchView(APIView):
 
     @extend_schema(
         tags=["Chat"],
+        summary="Unmatch the other user",
+    )
+    def post(self, request, conversation_id):
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
+
+        other_user = _conversation_other_user(convo, request.user)
+        _set_mutual_swipes_to_skip(request.user, other_user)
+        _delete_match_and_invalidate(convo, request.user, other_user)
+
+        return Response({"detail": "Unmatched successfully."})
+
+
+class ConversationBlockView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Chat"],
+        summary="Block the other user",
+    )
+    def post(self, request, conversation_id):
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
+
+        other_user = _conversation_other_user(convo, request.user)
+        UserBlock.objects.get_or_create(blocker=request.user, blocked=other_user)
+        invalidate_user_caches(request.user.id, reason="block")
+        invalidate_user_caches(other_user.id, reason="block")
+
+        return Response({"detail": "User blocked successfully."})
+
+
+class ConversationUnmatchBlockView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Chat"],
         summary="Unmatch and block the other user",
     )
     def post(self, request, conversation_id):
@@ -547,21 +609,12 @@ class ConversationUnmatchView(APIView):
         if error:
             return error
 
-        other_user = convo.match.get_other_user(request.user)
+        other_user = _conversation_other_user(convo, request.user)
         UserBlock.objects.get_or_create(blocker=request.user, blocked=other_user)
-        Swipe.objects.update_or_create(
-            from_user=request.user,
-            to_user=other_user,
-            defaults={'action': 'SKIP'},
-        )
-        Swipe.objects.update_or_create(
-            from_user=other_user,
-            to_user=request.user,
-            defaults={'action': 'SKIP'},
-        )
-        convo.match.delete()
+        _set_mutual_swipes_to_skip(request.user, other_user)
+        _delete_match_and_invalidate(convo, request.user, other_user)
 
-        return Response({'detail': 'Unmatched and blocked successfully.'})
+        return Response({"detail": "Unmatched and blocked successfully."})
 
 
 class ConversationReportView(APIView):
