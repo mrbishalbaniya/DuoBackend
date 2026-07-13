@@ -73,10 +73,19 @@ class WalletTransactionSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
 
 
+class CoinPackSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    coins = serializers.IntegerField()
+    price_npr = serializers.IntegerField()
+    label = serializers.CharField()
+
+
 class WalletSerializer(serializers.Serializer):
     balance = serializers.IntegerField()
+    coins = serializers.IntegerField()
     currency = serializers.CharField()
     top_up_presets = serializers.ListField(child=serializers.IntegerField())
+    coin_packs = CoinPackSerializer(many=True)
     transactions = WalletTransactionSerializer(many=True)
 
 

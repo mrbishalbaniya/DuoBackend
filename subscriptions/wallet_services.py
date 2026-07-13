@@ -19,7 +19,15 @@ from .services import (
 
 MIN_TOP_UP_AMOUNT = Decimal("100")
 MAX_TOP_UP_AMOUNT = Decimal("500000")
-TOP_UP_PRESETS = [500, 1000, 2000, 5000]
+
+# 1 NPR paid via eSewa credits 1 Duo Coin.
+COIN_PACKS = [
+    {"id": "coins_500", "coins": 500, "price_npr": 500, "label": "500 Coins"},
+    {"id": "coins_1000", "coins": 1000, "price_npr": 1000, "label": "1,000 Coins"},
+    {"id": "coins_2000", "coins": 2000, "price_npr": 2000, "label": "2,000 Coins"},
+    {"id": "coins_5000", "coins": 5000, "price_npr": 5000, "label": "5,000 Coins"},
+]
+TOP_UP_PRESETS = [pack["coins"] for pack in COIN_PACKS]
 
 
 class InsufficientWalletBalance(Exception):
@@ -27,7 +35,7 @@ class InsufficientWalletBalance(Exception):
         self.balance = balance
         self.required = required
         super().__init__(
-            f"Insufficient wallet balance. You have NPR {balance:.0f} but need NPR {required:.0f}."
+            f"Insufficient coins. You have {balance:.0f} coins but need {required:.0f}."
         )
 
 
@@ -54,8 +62,10 @@ def get_wallet_summary(user, *, limit: int = 20) -> dict:
     )
     return {
         "balance": int(wallet.balance),
-        "currency": wallet.currency,
+        "coins": int(wallet.balance),
+        "currency": "COIN",
         "top_up_presets": TOP_UP_PRESETS,
+        "coin_packs": COIN_PACKS,
         "transactions": transactions,
     }
 
@@ -142,9 +152,9 @@ def debit_wallet(
 def create_topup_request(user, amount: int | Decimal) -> tuple[WalletTopUp, dict]:
     total = Decimal(str(amount))
     if total < MIN_TOP_UP_AMOUNT:
-        raise ValueError(f"Minimum top-up is NPR {MIN_TOP_UP_AMOUNT:.0f}.")
+        raise ValueError(f"Minimum coin pack is {MIN_TOP_UP_AMOUNT:.0f} coins (NPR {MIN_TOP_UP_AMOUNT:.0f}).")
     if total > MAX_TOP_UP_AMOUNT:
-        raise ValueError(f"Maximum top-up is NPR {MAX_TOP_UP_AMOUNT:.0f}.")
+        raise ValueError(f"Maximum coin pack is {MAX_TOP_UP_AMOUNT:.0f} coins (NPR {MAX_TOP_UP_AMOUNT:.0f}).")
 
     tax_amount = Decimal("0")
     service_charge = Decimal("0")
@@ -226,7 +236,7 @@ def activate_topup(
             locked.user,
             locked.total_amount,
             tx_type=WalletTransaction.TYPE_TOP_UP,
-            description="Wallet top-up via eSewa",
+            description=f"Purchased {int(locked.total_amount):,} coins via eSewa",
             reference_id=locked.transaction_uuid,
         )
 
@@ -243,7 +253,7 @@ def purchase_plan_with_wallet(user, plan_id: str | None = None) -> SubscriptionP
             user,
             amount,
             tx_type=WalletTransaction.TYPE_PURCHASE,
-            description=f"Purchased {plan['name']}",
+            description=f"{plan['name']} · {int(amount):,} coins",
             reference_id=plan["plan_id"],
         )
 
