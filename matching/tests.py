@@ -112,20 +112,27 @@ class DiscoverRecommendationTests(TestCase):
         self.assertGreater(hindu_score, other_score)
 
     def test_expands_search_when_strict_pool_is_small(self):
+        self.viewer_profile.pref_verified_only = False
+        self.viewer_profile.save(update_fields=["pref_verified_only"])
         self._create_candidate("verified_match", age=26, gender="F", is_verified=True)
-        self._create_candidate("backup", age=40, gender="F", is_verified=False)
-
-        result = discover_profiles(self.viewer)
-        self.assertTrue(result.expanded_search)
-        self.assertGreaterEqual(len(result.profiles), 1)
-
-    def test_swiped_profiles_are_excluded(self):
-        candidate = self._create_candidate("fresh", age=26, gender="F", is_verified=True)
-        Swipe.objects.create(from_user=self.viewer, to_user=candidate.user, action="SKIP")
+        self._create_candidate("backup", age=27, gender="F", relationship_goal="casual")
 
         result = discover_profiles(self.viewer)
         usernames = [profile.user.username for profile in result.profiles]
-        self.assertNotIn("fresh", usernames)
+        self.assertIn("verified_match", usernames)
+        self.assertIn("backup", usernames)
+        self.assertTrue(result.expanded_search)
+
+    def test_recycled_skips_when_fresh_pool_exhausted(self):
+        first = self._create_candidate("first", age=26, gender="F", is_verified=True)
+        second = self._create_candidate("second", age=27, gender="F", is_verified=True)
+        Swipe.objects.create(from_user=self.viewer, to_user=first.user, action="SKIP")
+        Swipe.objects.create(from_user=self.viewer, to_user=second.user, action="SKIP")
+
+        result = discover_profiles(self.viewer)
+        usernames = [profile.user.username for profile in result.profiles]
+        self.assertGreater(len(usernames), 0)
+        self.assertTrue(result.recycled_skips)
 
     def test_rank_discover_profiles_backward_compatible(self):
         self._create_candidate("one", age=26, gender="F", is_verified=True)

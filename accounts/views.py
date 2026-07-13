@@ -521,7 +521,8 @@ class DiscoverView(APIView):
         context = profile_list_serializer_context(request, result.profiles)
         return {
             "profiles": ProfileSerializer(result.profiles, many=True, context=context).data,
-            "expanded_search": result.expanded_search,
+            "expanded_search": result.expanded_search or result.recycled_skips,
+            "recycled_skips": result.recycled_skips,
         }
 
 

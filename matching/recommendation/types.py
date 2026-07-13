@@ -21,6 +21,8 @@ class SearchConfig:
   prefer_active: bool = False
   prefer_popular: bool = False
   prefer_new: bool = False
+  ignore_distance: bool = False
+  recycled_skips: bool = False
 
 
 @dataclass
@@ -35,4 +37,5 @@ class DiscoverResult:
   profiles: list[Profile]
   expanded_search: bool = False
   relaxation_stage: str = "strict"
+  recycled_skips: bool = False
   meta: dict = field(default_factory=dict)

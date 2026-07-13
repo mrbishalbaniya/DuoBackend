@@ -195,7 +195,7 @@ def passes_hard_filters(
     if age and (age < config.age_min or age > config.age_max):
         return False
 
-    if distance_km > config.max_distance_km:
+    if not config.ignore_distance and distance_km > config.max_distance_km:
         return False
 
     if config.apply_location and config.location_pref:
