@@ -239,14 +239,9 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ["username", "email", "password", "full_name"]
 
     def validate_email(self, value):
-        from accounts.email_otp import is_email_verified_for_registration, normalize_email
+        from accounts.email_otp import normalize_email
 
-        email = normalize_email(value)
-        if not is_email_verified_for_registration(email):
-            raise serializers.ValidationError(
-                "Email address is not verified. Complete OTP verification first."
-            )
-        return email
+        return normalize_email(value)
 
     def create(self, validated_data):
         full_name = validated_data.pop("full_name", "")
