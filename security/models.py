@@ -52,7 +52,11 @@ class TwoFactorSettings(models.Model):
         choices=TwoFactorMethod.choices,
         blank=True,
     )
-    totp_secret = models.CharField(max_length=128, blank=True)
+    totp_secret = models.CharField(
+        max_length=256,
+        blank=True,
+        help_text="Fernet-encrypted TOTP seed (enc:…).",
+    )
     remember_device_days = models.PositiveSmallIntegerField(default=30)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -62,6 +66,16 @@ class TwoFactorSettings(models.Model):
 
     def __str__(self):
         return f"2FA for {self.user_id} ({'on' if self.is_enabled else 'off'})"
+
+    def set_totp_secret(self, plain: str) -> None:
+        from security.crypto import encrypt_secret
+
+        self.totp_secret = encrypt_secret(plain)
+
+    def get_totp_secret(self) -> str:
+        from security.crypto import decrypt_secret
+
+        return decrypt_secret(self.totp_secret)
 
 
 class BackupCode(models.Model):
@@ -103,6 +117,8 @@ class UserDevice(models.Model):
     browser = models.CharField(max_length=64, blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     location = models.CharField(max_length=128, blank=True)
+    country = models.CharField(max_length=64, blank=True, default="")
+    city = models.CharField(max_length=64, blank=True, default="")
     push_token = models.CharField(max_length=512, blank=True)
     is_trusted = models.BooleanField(default=False)
     trusted_until = models.DateTimeField(null=True, blank=True)
@@ -180,11 +196,19 @@ class LoginHistory(models.Model):
     success = models.BooleanField(default=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     location = models.CharField(max_length=128, blank=True)
+    country = models.CharField(max_length=64, blank=True, default="")
+    city = models.CharField(max_length=64, blank=True, default="")
     device_name = models.CharField(max_length=128, blank=True)
     browser = models.CharField(max_length=64, blank=True)
     os_name = models.CharField(max_length=64, blank=True)
     user_agent = models.CharField(max_length=512, blank=True)
     failure_reason = models.CharField(max_length=128, blank=True)
+    event_type = models.CharField(
+        max_length=32,
+        blank=True,
+        default="login",
+        help_text="login | logout | password_changed | 2fa_enabled | ...",
+    )
     is_current = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -194,6 +218,12 @@ class LoginHistory(models.Model):
         ordering = ["-created_at"]
 
 
+class SecurityAlertSeverity(models.TextChoices):
+    INFO = "info", "Info"
+    WARNING = "warning", "Warning"
+    CRITICAL = "critical", "Critical"
+
+
 class SecurityEvent(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="security_events")
     event_type = models.CharField(max_length=32, choices=SecurityEventType.choices)
@@ -201,6 +231,12 @@ class SecurityEvent(models.Model):
     message = models.TextField(blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
+    severity = models.CharField(
+        max_length=16,
+        choices=SecurityAlertSeverity.choices,
+        default=SecurityAlertSeverity.INFO,
+        db_index=True,
+    )
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

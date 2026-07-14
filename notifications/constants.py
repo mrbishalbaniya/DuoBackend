@@ -19,6 +19,7 @@ ADMIN_ANNOUNCEMENT = "admin_announcement"
 SYSTEM_MAINTENANCE = "system_maintenance"
 VERIFICATION_UPDATE = "verification_update"
 MARKETING = "marketing"
+SECURITY_ALERT = "security_alert"
 CALL_INCOMING = "call_incoming"
 CALL_MISSED = "call_missed"
 
@@ -39,6 +40,7 @@ ALL_TYPES = {
     SYSTEM_MAINTENANCE,
     VERIFICATION_UPDATE,
     MARKETING,
+    SECURITY_ALERT,
     CALL_INCOMING,
     CALL_MISSED,
 }

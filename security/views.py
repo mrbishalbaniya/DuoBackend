@@ -320,6 +320,15 @@ class SecurityEventReadView(APIView):
         invalidate_user_caches(request.user.id, reason="security_event_read")
         return Response(SecurityEventSerializer(event).data)
 
+    @extend_schema(tags=["Security"], summary="Delete security alert")
+    def delete(self, request, event_id: int):
+        try:
+            security_service.delete_event(request.user, event_id)
+        except Exception:
+            return Response({"detail": "Alert not found."}, status=status.HTTP_404_NOT_FOUND)
+        invalidate_user_caches(request.user.id, reason="security_event_delete")
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class SecurityEventsReadAllView(APIView):
     @extend_schema(tags=["Security"], summary="Mark all security alerts as read")

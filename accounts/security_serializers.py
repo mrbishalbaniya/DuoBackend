@@ -17,12 +17,21 @@ class DuoTokenObtainPairSerializer(TokenObtainPairSerializer):
         }
         user = authenticate(request=request, **credentials)
         if user is None:
+            try:
+                from security.services import security_service
+
+                security_service.record_failed_password_login(
+                    request,
+                    username=attrs.get(self.username_field, ""),
+                )
+            except Exception:
+                logger.exception("failed_login_record_error")
             raise AuthenticationFailed("No active account found with the given credentials")
 
         from security.services import security_service
 
         try:
-            requires_2fa = security_service.login_requires_2fa(user)
+            requires_2fa = security_service.login_requires_2fa(user, request)
         except Exception:
             logger.exception("login_requires_2fa_failed user_id=%s", user.id)
             requires_2fa = False
@@ -55,10 +64,3 @@ class DuoTokenObtainPairSerializer(TokenObtainPairSerializer):
             except Exception:
                 logger.exception("record_login_failed user_id=%s", user.id)
         return data
-
-    def _resolve_user(self, attrs):
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
-        username = attrs.get(self.username_field, "")
-        return User.objects.filter(username=username).first()

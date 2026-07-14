@@ -36,6 +36,13 @@ class SecurityOverviewSerializer(serializers.Serializer):
     remember_device_days = serializers.IntegerField()
     current_device_id = serializers.CharField()
     has_backup_codes = serializers.BooleanField()
+    backup_codes_remaining = serializers.IntegerField(required=False, default=0)
+    security_score = serializers.IntegerField(required=False, default=0)
+    recommendations = serializers.ListField(required=False, default=list)
+    email_verified = serializers.BooleanField(required=False, default=False)
+    phone_verified = serializers.BooleanField(required=False, default=False)
+    trusted_device_active = serializers.BooleanField(required=False, default=False)
+    recent_suspicious = serializers.BooleanField(required=False, default=True)
 
 
 class UserDeviceSerializer(serializers.ModelSerializer):
@@ -57,6 +64,8 @@ class UserDeviceSerializer(serializers.ModelSerializer):
             "browser",
             "ip_address",
             "location",
+            "country",
+            "city",
             "push_token",
             "is_trusted",
             "is_trusted_active",
@@ -93,10 +102,13 @@ class LoginHistorySerializer(serializers.ModelSerializer):
             "success",
             "ip_address",
             "location",
+            "country",
+            "city",
             "device_name",
             "browser",
             "os_name",
             "failure_reason",
+            "event_type",
             "is_current",
             "created_at",
         ]
@@ -112,6 +124,7 @@ class SecurityEventSerializer(serializers.ModelSerializer):
             "message",
             "metadata",
             "ip_address",
+            "severity",
             "is_read",
             "created_at",
         ]
