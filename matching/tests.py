@@ -133,6 +133,20 @@ class DiscoverRecommendationTests(TestCase):
         usernames = [profile.user.username for profile in result.profiles]
         self.assertGreater(len(usernames), 0)
         self.assertTrue(result.recycled_skips)
+        self.assertIn("first", usernames)
+        self.assertIn("second", usernames)
+
+    def test_liked_profiles_are_not_recycled(self):
+        liked = self._create_candidate("liked", age=26, gender="F", is_verified=True)
+        skipped = self._create_candidate("skipped", age=27, gender="F", is_verified=True)
+        Swipe.objects.create(from_user=self.viewer, to_user=liked.user, action="LIKE")
+        Swipe.objects.create(from_user=self.viewer, to_user=skipped.user, action="SKIP")
+
+        result = discover_profiles(self.viewer)
+        usernames = [profile.user.username for profile in result.profiles]
+        self.assertNotIn("liked", usernames)
+        self.assertIn("skipped", usernames)
+        self.assertTrue(result.recycled_skips)
 
     def test_rank_discover_profiles_backward_compatible(self):
         self._create_candidate("one", age=26, gender="F", is_verified=True)

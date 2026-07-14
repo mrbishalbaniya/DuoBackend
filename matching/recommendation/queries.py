@@ -37,15 +37,28 @@ def build_eligible_queryset(user) -> QuerySet[Profile]:
 
 
 def build_recycled_queryset(user) -> QuerySet[Profile]:
-    """Re-surface previously skipped profiles when the fresh pool is empty."""
+    """Re-surface previously skipped profiles when the fresh pool is empty.
+
+    Liked / superliked users stay excluded. Only SKIP targets are recycled.
+    """
     matched_ids = get_matched_user_ids(user)
     blocked = blocked_user_ids(user.id)
+    liked_ids = Swipe.objects.filter(
+        from_user=user,
+        action__in=["LIKE", "SUPERLIKE"],
+    ).values_list("to_user_id", flat=True)
+    skipped_ids = Swipe.objects.filter(
+        from_user=user,
+        action="SKIP",
+    ).values_list("to_user_id", flat=True)
 
     return (
         _annotated_profiles()
         .exclude(user=user)
         .exclude(user_id__in=matched_ids)
         .exclude(user_id__in=blocked)
+        .exclude(user_id__in=liked_ids)
+        .filter(user_id__in=skipped_ids)
         .filter(is_onboarded=True)
     )
 
