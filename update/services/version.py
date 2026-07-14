@@ -10,16 +10,27 @@ from django.utils import timezone
 
 from update.models import AppVersion
 from update.services.admin_helpers import resolve_apk_url
+from update.services.release_notes import (
+    parse_release_notes,
+    resolve_release_title,
+    sanitize_release_notes,
+)
 
-
-def parse_release_notes(raw) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, list):
-        return [str(item).strip() for item in raw if str(item).strip()]
-    if isinstance(raw, str):
-        return [line.strip() for line in raw.splitlines() if line.strip()]
-    return []
+__all__ = [
+    "parse_release_notes",
+    "resolve_release_title",
+    "sanitize_release_notes",
+    "compute_sha256",
+    "compare_versions",
+    "get_active_version",
+    "get_minimum_active_version",
+    "publish_version",
+    "activate_version",
+    "rollback_version",
+    "version_payload",
+    "update_required",
+    "update_blocked",
+]
 
 
 def compute_sha256(file_obj) -> tuple[str, int]:
@@ -143,12 +154,20 @@ def version_payload(version: AppVersion, *, request=None) -> dict:
     if request is not None and apk_url.startswith("/"):
         apk_url = request.build_absolute_uri(apk_url)
 
+    title = resolve_release_title(
+        getattr(version, "release_title", "") or "",
+        version=version.version,
+    )
+    notes = sanitize_release_notes(version.release_notes)
+
     return {
         "latest_version": version.version,
         "minimum_version": version.minimum_version or version.version,
         "build_number": version.build_number,
         "apk_url": apk_url,
-        "release_notes": version.release_notes or [],
+        "title": title,
+        "release_title": title,
+        "release_notes": notes,
         "force_update": version.force_update,
         "soft_update": version.soft_update,
         "emergency_update": version.emergency_update,
@@ -159,6 +178,10 @@ def version_payload(version: AppVersion, *, request=None) -> dict:
         "channel": version.channel,
         "platform": version.platform,
         "download_count": version.download_count,
+        "mandatory": bool(version.force_update or version.emergency_update),
+        "size": version.file_size_label,
+        "version": version.version,
+        "build": version.build_number,
     }
 
 

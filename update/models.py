@@ -29,7 +29,17 @@ class AppVersion(models.Model):
         help_text="Public HTTPS URL when APK is hosted on S3/R2/GitHub.",
     )
 
-    release_notes = models.JSONField(default=list, blank=True)
+    release_title = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Customer-facing release title shown in the update dialog.",
+    )
+    release_notes = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Customer-facing bullets. Technical GitHub release body must not be pasted here.",
+    )
     minimum_version = models.CharField(
         max_length=32,
         blank=True,

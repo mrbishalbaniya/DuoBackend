@@ -30,7 +30,7 @@ class AppVersionAdmin(admin.ModelAdmin):
         "published_at",
     )
     list_filter = ("platform", "channel", "is_active", "is_published", "force_update", "emergency_update")
-    search_fields = ("version", "apk_url", "checksum_sha256", "minimum_version")
+    search_fields = ("version", "release_title", "apk_url", "checksum_sha256", "minimum_version")
     ordering = ("-build_number", "-published_at", "-created_at")
     list_per_page = 25
     readonly_fields = (
@@ -52,9 +52,14 @@ class AppVersionAdmin(admin.ModelAdmin):
                     "build_number",
                     "platform",
                     "channel",
+                    "release_title",
                     "release_notes_text",
                     "minimum_version",
-                )
+                ),
+                "description": (
+                    "Release Title and Release Notes are shown to users in the app. "
+                    "Never paste raw GitHub release bodies here."
+                ),
             },
         ),
         (

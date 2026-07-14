@@ -93,16 +93,22 @@ class AppVersionCheckView(APIView):
                 "minimum_version": installed_version,
                 "build_number": installed_build,
                 "apk_url": "",
+                "title": "",
+                "release_title": "",
                 "release_notes": [],
                 "force_update": False,
                 "soft_update": True,
                 "emergency_update": False,
+                "mandatory": False,
                 "file_size": "0 B",
+                "size": "0 B",
                 "file_size_bytes": 0,
                 "checksum_sha256": "",
                 "published_at": None,
                 "channel": channel,
                 "platform": platform,
+                "version": installed_version,
+                "build": installed_build,
                 "update_available": False,
                 "update_blocked": False,
             }
@@ -214,6 +220,7 @@ class AppVersionPublishView(APIView):
             version=version_str,
             build_number=build_number,
             defaults={
+                "release_title": data.get("release_title") or "",
                 "release_notes": data.get("release_notes") or [],
                 "minimum_version": data.get("minimum_version") or "",
                 "force_update": data.get("force_update", False),
@@ -222,6 +229,8 @@ class AppVersionPublishView(APIView):
             },
         )
 
+        if data.get("release_title"):
+            version.release_title = data["release_title"]
         version.release_notes = data.get("release_notes") or version.release_notes
         version.minimum_version = data.get("minimum_version") or version.minimum_version
         version.force_update = data.get("force_update", version.force_update)
