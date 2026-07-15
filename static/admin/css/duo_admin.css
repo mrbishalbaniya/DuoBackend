@@ -1,7 +1,17 @@
+html {
+  color-scheme: dark;
+}
+
+html[data-bs-theme="light"],
+html[data-portal-theme="light"] {
+  color-scheme: light;
+}
+
 /* Duo Admin — design tokens aligned with DuoFrontend/app/globals.css */
 
 :root,
-[data-bs-theme="dark"] {
+[data-bs-theme="dark"],
+[data-portal-theme="dark"] {
   --duo-primary: #e84a7a;
   --duo-primary-container: #c83c67;
   --duo-love: #ff4d6d;
@@ -49,16 +59,39 @@
   --bs-border-radius-pill: 9999px;
 }
 
-html {
-  color-scheme: dark;
+[data-bs-theme="light"],
+[data-portal-theme="light"] {
+  --duo-background: #f4f4f6;
+  --duo-surface: #ffffff;
+  --duo-surface-bright: #f9fafb;
+  --duo-surface-variant: #eef0f2;
+  --duo-surface-container: #ffffff;
+  --duo-surface-container-high: #f3f4f6;
+  --duo-on-surface: #111827;
+  --duo-on-surface-variant: #6b7280;
+  --duo-muted-foreground: #6b7280;
+  --duo-border: #e5e7eb;
+  --duo-input: #e5e7eb;
+
+  --bs-secondary: #e5e7eb;
+  --bs-secondary-rgb: 229, 231, 235;
+  --bs-body-bg: var(--duo-background);
+  --bs-body-color: var(--duo-on-surface);
+  --bs-emphasis-color: var(--duo-on-surface);
+  --bs-secondary-color: var(--duo-on-surface-variant);
+  --bs-tertiary-color: var(--duo-muted-foreground);
+  --bs-border-color: var(--duo-border);
+  --bs-link-color: #c83c67;
+  --bs-link-hover-color: #e84a7a;
 }
 
 body {
   font-family: var(--duo-font-body);
   background-color: var(--duo-background) !important;
+  color: var(--duo-on-surface);
   background-image:
-    radial-gradient(ellipse 90% 55% at 50% -15%, rgba(232, 74, 122, 0.07), transparent 55%),
-    radial-gradient(ellipse 70% 45% at 0% 100%, rgba(212, 165, 116, 0.05), transparent 50%) !important;
+    radial-gradient(ellipse 90% 55% at 50% -15%, color-mix(in srgb, var(--duo-primary) 8%, transparent), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 0% 100%, color-mix(in srgb, var(--duo-accent) 6%, transparent), transparent 50%) !important;
 }
 
 ::selection {
@@ -569,7 +602,7 @@ small.form-text {
 /* --- Change form tabs --- */
 
 .nav-tabs {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
+  border-bottom-color: var(--duo-border);
 }
 
 .nav-tabs .nav-link {
@@ -578,16 +611,17 @@ small.form-text {
   border-radius: 0.75rem 0.75rem 0 0;
   font-family: var(--duo-font-headline);
   font-weight: 600;
+  background: transparent;
 }
 
 .nav-tabs .nav-link:hover {
   color: var(--duo-on-surface);
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--duo-on-surface) 4%, transparent);
 }
 
 .nav-tabs .nav-link.active {
-  color: var(--duo-primary);
-  background: rgba(232, 74, 122, 0.1);
+  color: var(--duo-primary) !important;
+  background: color-mix(in srgb, var(--duo-primary) 12%, transparent) !important;
   border-bottom: 2px solid var(--duo-primary);
 }
 

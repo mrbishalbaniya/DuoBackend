@@ -13,108 +13,116 @@
 {% endblock %}
 
 {% block content %}
-<div class="card mb-3">
-  <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-    <h3 class="card-title mb-0">{{ title }}</h3>
-    <a href="{{ back_url }}" class="btn btn-sm btn-secondary">&larr; {% trans "Back to user list" %}</a>
+<div class="duo-chat-admin">
+  <div class="card duo-chat-admin__card duo-chat-admin__meta">
+    <div class="card-header duo-chat-admin__header">
+      <div>
+        <h3 class="card-title mb-0">{{ user_obj.username }}</h3>
+        <p class="duo-chat-admin__meta-line mb-0">
+          #{{ user_obj.id }}
+          · {% if user_obj.profile %}{{ user_obj.profile.full_name|default:"—" }}{% else %}—{% endif %}
+          · {{ user_obj.email|default:"—" }}
+          {% if user_obj.profile and user_obj.profile.phone_number %}
+            · {{ user_obj.profile.phone_country_code }} {{ user_obj.profile.phone_number }}
+          {% endif %}
+        </p>
+      </div>
+      <a href="{{ back_url }}" class="btn btn-sm btn-secondary">&larr; {% trans "Back" %}</a>
+    </div>
   </div>
-  <div class="card-body">
-    <dl class="row mb-0">
-      <dt class="col-sm-2">{% trans "ID" %}</dt>
-      <dd class="col-sm-10">{{ user_obj.id }}</dd>
-      <dt class="col-sm-2">{% trans "Username" %}</dt>
-      <dd class="col-sm-10">{{ user_obj.username }}</dd>
-      <dt class="col-sm-2">{% trans "Full name" %}</dt>
-      <dd class="col-sm-10">
-        {% if user_obj.profile %}{{ user_obj.profile.full_name|default:"—" }}{% else %}—{% endif %}
-      </dd>
-      <dt class="col-sm-2">{% trans "Email" %}</dt>
-      <dd class="col-sm-10">{{ user_obj.email|default:"—" }}</dd>
-      <dt class="col-sm-2">{% trans "Phone" %}</dt>
-      <dd class="col-sm-10">
-        {% if user_obj.profile and user_obj.profile.phone_number %}
-          {{ user_obj.profile.phone_country_code }} {{ user_obj.profile.phone_number }}
-        {% else %}
-          —
-        {% endif %}
-      </dd>
-    </dl>
-  </div>
-</div>
 
-<div class="card">
-  <div class="card-header">
-    <h3 class="card-title mb-0">{% trans "All messages" %} ({{ messages|length }})</h3>
-  </div>
-  <div class="card-body table-responsive p-0">
-    <table class="table table-striped table-hover mb-0">
-      <thead>
-        <tr>
-          <th>{% trans "To user" %}</th>
-          <th>{% trans "Full name" %}</th>
-          <th>{% trans "Message" %}</th>
-          <th>{% trans "Image" %}</th>
-          <th>{% trans "Read" %}</th>
-          <th>{% trans "Status" %}</th>
-          <th>{% trans "Date" %}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for message in messages %}
-          {% with match=message.conversation.match %}
-            <tr>
-              <td>
-                {% if message.sender_id == match.user1_id %}
-                  {{ match.user2.username }}
-                {% else %}
-                  {{ match.user1.username }}
-                {% endif %}
-              </td>
-              <td>
-                {% if message.sender_id == match.user1_id %}
-                  {% if match.user2.profile %}{{ match.user2.profile.full_name|default:"—" }}{% else %}—{% endif %}
-                {% else %}
-                  {% if match.user1.profile %}{{ match.user1.profile.full_name|default:"—" }}{% else %}—{% endif %}
-                {% endif %}
-              </td>
-              <td>
-                {% if message.is_deleted_for_everyone %}
-                  <span class="text-muted"><em>{% trans "Deleted for everyone" %}</em></span>
-                {% else %}
-                  {{ message.content|default:"—"|truncatechars:120 }}
-                {% endif %}
-              </td>
-              <td>
-                {% if message.image_url and not message.is_deleted_for_everyone %}
-                  <a href="{{ message.image_url }}" target="_blank" rel="noopener noreferrer">{% trans "View" %}</a>
-                {% else %}
-                  —
-                {% endif %}
-              </td>
-              <td>
-                {% if message.is_read %}
-                  <span class="badge badge-success">{% trans "Read" %}</span>
-                {% else %}
-                  <span class="badge badge-warning">{% trans "Unread" %}</span>
-                {% endif %}
-              </td>
-              <td>
-                {% if message.is_deleted_for_everyone %}
-                  <span class="badge badge-danger">{% trans "Deleted" %}</span>
-                {% else %}
-                  <span class="badge badge-secondary">{% trans "Active" %}</span>
-                {% endif %}
-              </td>
-              <td>{{ message.timestamp|date:"Y-m-d H:i" }}</td>
-            </tr>
-          {% endwith %}
-        {% empty %}
+  <div class="card duo-chat-admin__card">
+    <div class="card-header duo-chat-admin__header">
+      <h3 class="card-title mb-0">{% trans "Messages" %} <span class="text-muted">({{ message_total }})</span></h3>
+    </div>
+    <div class="card-body table-responsive p-0">
+      <table class="table table-striped table-hover table-sm mb-0 duo-chat-admin__table">
+        <thead>
           <tr>
-            <td colspan="7" class="text-center text-muted py-4">{% trans "No messages for this user." %}</td>
+            <th>{% trans "To" %}</th>
+            <th>{% trans "Name" %}</th>
+            <th>{% trans "Message" %}</th>
+            <th>{% trans "Media" %}</th>
+            <th>{% trans "Read" %}</th>
+            <th>{% trans "Status" %}</th>
+            <th>{% trans "Date" %}</th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for message in messages %}
+            {% with match=message.conversation.match %}
+              <tr>
+                <td>
+                  {% if message.sender_id == match.user1_id %}
+                    {{ match.user2.username }}
+                  {% else %}
+                    {{ match.user1.username }}
+                  {% endif %}
+                </td>
+                <td class="duo-chat-admin__ellipsis">
+                  {% if message.sender_id == match.user1_id %}
+                    {% if match.user2.profile %}{{ match.user2.profile.full_name|default:"—" }}{% else %}—{% endif %}
+                  {% else %}
+                    {% if match.user1.profile %}{{ match.user1.profile.full_name|default:"—" }}{% else %}—{% endif %}
+                  {% endif %}
+                </td>
+                <td class="duo-chat-admin__msg">
+                  {% if message.is_deleted_for_everyone %}
+                    <span class="text-muted"><em>{% trans "Deleted for everyone" %}</em></span>
+                  {% else %}
+                    {{ message.content|default:"—"|truncatechars:80 }}
+                  {% endif %}
+                </td>
+                <td>
+                  {% if message.image_url and not message.is_deleted_for_everyone %}
+                    <a href="{{ message.image_url }}" target="_blank" rel="noopener noreferrer">{% trans "View" %}</a>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td>
+                  {% if message.is_read %}
+                    <span class="badge badge-success">{% trans "Read" %}</span>
+                  {% else %}
+                    <span class="badge badge-warning">{% trans "Unread" %}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if message.is_deleted_for_everyone %}
+                    <span class="badge badge-danger">{% trans "Deleted" %}</span>
+                  {% else %}
+                    <span class="badge badge-secondary">{% trans "Active" %}</span>
+                  {% endif %}
+                </td>
+                <td class="text-nowrap">{{ message.timestamp|date:"Y-m-d H:i" }}</td>
+              </tr>
+            {% endwith %}
+          {% empty %}
+            <tr>
+              <td colspan="7" class="text-center text-muted py-3">{% trans "No messages for this user." %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-footer duo-chat-admin__pager">
+        <span class="text-muted">
+          {% blocktrans with start=page_obj.start_index end=page_obj.end_index total=page_obj.paginator.count %}
+            Showing {{ start }}–{{ end }} of {{ total }}
+          {% endblocktrans %}
+        </span>
+        <div class="duo-chat-admin__pager-links">
+          {% if page_obj.has_previous %}
+            <a class="btn btn-sm btn-secondary" href="?page={{ page_obj.previous_page_number }}">&larr; {% trans "Prev" %}</a>
+          {% endif %}
+          <span>{% trans "Page" %} {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+          {% if page_obj.has_next %}
+            <a class="btn btn-sm btn-secondary" href="?page={{ page_obj.next_page_number }}">{% trans "Next" %} &rarr;</a>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

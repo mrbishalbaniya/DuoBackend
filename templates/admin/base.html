@@ -14,8 +14,18 @@
       var resolved = pref === "system" && window.matchMedia
         ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
         : (pref === "system" ? "dark" : pref);
+      if (resolved !== "light" && resolved !== "dark") resolved = "dark";
       document.documentElement.setAttribute("data-portal-theme", resolved);
       document.documentElement.setAttribute("data-bs-theme", resolved);
+      document.documentElement.style.colorScheme = resolved;
+
+      // Sidebar defaults to collapsed unless user expanded it.
+      var sidebarPref = localStorage.getItem("duo-portal-sidebar");
+      if (sidebarPref === "expanded") {
+        document.documentElement.setAttribute("data-portal-sidebar", "expanded");
+      } else {
+        document.documentElement.setAttribute("data-portal-sidebar", "collapsed");
+      }
     })();
   </script>
   <link rel="stylesheet" href="{% static 'vendor/fontawesome-free/css/all.min.css' %}">

@@ -1,4 +1,4 @@
-"""Aggregate live social activity into globe heatmap zones."""
+﻿"""Aggregate live social activity into globe heatmap zones."""
 
 from __future__ import annotations
 
@@ -170,7 +170,7 @@ def compute_activity_zones(
 
     # Base density from registered profiles (privacy-safe aggregate)
     for profile in Profile.objects.select_related("user").only("location", "user_id").iterator():
-        lat, lng = profile_coordinates(profile.location, profile.user_id)
+        lat, lng = profile_coordinates(profile.location, profile.user_id, profile.pref_values)
         if not _in_bbox(lat, lng, lat_min, lat_max, lon_min, lon_max):
             continue
         _add_to_cell(
@@ -194,7 +194,7 @@ def compute_activity_zones(
             profile = visit.viewed_user.profile
         except Profile.DoesNotExist:
             continue
-        lat, lng = profile_coordinates(profile.location, profile.user_id)
+        lat, lng = profile_coordinates(profile.location, profile.user_id, profile.pref_values)
         if not _in_bbox(lat, lng, lat_min, lat_max, lon_min, lon_max):
             continue
         w = 2.4 * _decay(_hours_ago(visit.last_visited_at))
@@ -208,7 +208,7 @@ def compute_activity_zones(
             profile = swipe.from_user.profile
         except Profile.DoesNotExist:
             continue
-        lat, lng = profile_coordinates(profile.location, profile.user_id)
+        lat, lng = profile_coordinates(profile.location, profile.user_id, profile.pref_values)
         if not _in_bbox(lat, lng, lat_min, lat_max, lon_min, lon_max):
             continue
         action_w = {"LIKE": 2.8, "SUPERLIKE": 5.5, "SKIP": 0.6}.get(swipe.action, 1.0)
@@ -229,7 +229,7 @@ def compute_activity_zones(
                 profile = u.profile
             except Profile.DoesNotExist:
                 continue
-            lat, lng = profile_coordinates(profile.location, profile.user_id)
+            lat, lng = profile_coordinates(profile.location, profile.user_id, profile.pref_values)
             if not _in_bbox(lat, lng, lat_min, lat_max, lon_min, lon_max):
                 continue
             w = 6.0 * _decay(_hours_ago(match.matched_at))
@@ -249,7 +249,7 @@ def compute_activity_zones(
             profile = msg.sender.profile
         except Profile.DoesNotExist:
             continue
-        lat, lng = profile_coordinates(profile.location, profile.user_id)
+        lat, lng = profile_coordinates(profile.location, profile.user_id, profile.pref_values)
         if not _in_bbox(lat, lng, lat_min, lat_max, lon_min, lon_max):
             continue
         w = 1.6 * _decay(_hours_ago(msg.timestamp))

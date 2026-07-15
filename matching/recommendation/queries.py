@@ -64,22 +64,13 @@ def build_recycled_queryset(user) -> QuerySet[Profile]:
 
 
 def build_broad_queryset(user) -> QuerySet[Profile]:
-    """Last-resort pool: any profile except self, matches, blocks, and likes.
-
-    Liked / superliked users are never re-surfaced. Previously skipped users
-    may still appear here when the fresh pool is empty.
-    """
+    """Last-resort pool: any profile except self, matches, and blocks."""
     matched_ids = get_matched_user_ids(user)
     blocked = blocked_user_ids(user.id)
-    liked_ids = Swipe.objects.filter(
-        from_user=user,
-        action__in=["LIKE", "SUPERLIKE"],
-    ).values_list("to_user_id", flat=True)
 
     return (
         _annotated_profiles()
         .exclude(user=user)
         .exclude(user_id__in=matched_ids)
         .exclude(user_id__in=blocked)
-        .exclude(user_id__in=liked_ids)
     )

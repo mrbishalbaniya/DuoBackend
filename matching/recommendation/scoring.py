@@ -176,11 +176,11 @@ def _diversity_jitter(viewer_id: int, profile_id: int) -> float:
 
 def viewer_anchor(profile: Profile) -> tuple[str, tuple[float, float]]:
     location = (profile.pref_location or profile.location or "").strip() or "Kathmandu, Nepal"
-    return location, profile_coordinates(location, profile.user_id)
+    return location, profile_coordinates(location, profile.user_id, profile.pref_values)
 
 
 def candidate_distance_km(viewer_coords: tuple[float, float], candidate: Profile) -> float:
-    coords = profile_coordinates(candidate.location, candidate.user_id)
+    coords = profile_coordinates(candidate.location, candidate.user_id, candidate.pref_values)
     return haversine_km(viewer_coords, coords)
 
 

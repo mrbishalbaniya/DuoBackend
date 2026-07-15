@@ -1,4 +1,3 @@
-import random
 import time
 
 from django.db import OperationalError, transaction
@@ -19,7 +18,6 @@ from .serializers import (
     mask_profile_for_paywall,
 )
 from accounts.throttling import SwipeRateThrottle
-from chat.models import Conversation
 from chat.services import users_are_blocked
 from subscriptions.services import user_has_active_subscription
 from duo_project.query_optimization import apply_list_window, get_matched_user_ids
@@ -156,41 +154,17 @@ class UnlikeView(APIView):
         raise last_error  # pragma: no cover
 
     def _create_match(self, user1, user2):
-        p1 = user1.profile
-        p2 = user2.profile
+        from matching.services import create_match_between
 
-        values = random.randint(75, 98)
-        lifestyle = random.randint(60, 95)
-        career = random.randint(65, 95)
-        hobbies = random.randint(50, 90)
-        overall = int((values * 0.35) + (lifestyle * 0.25) + (career * 0.25) + (hobbies * 0.15))
-
-        all_interests = ['Hiking', 'Reading', 'Cooking', 'Travel', 'Music', 'Yoga',
-                         'Photography', 'Dancing', 'Classic Rock', 'Philanthropy']
-        shared = random.sample(all_interests, random.randint(3, 6))
-
-        sparks = [
-            f"Both passionate about adventure travel and mountains",
-            f"Strong mutual focus on family-oriented celebrations",
-            f"Shared appreciation for traditional cultural values",
-        ]
-
-        match = Match.objects.create(
-            user1=user1,
-            user2=user2,
-            compatibility_score=overall,
-            values_score=values,
-            lifestyle_score=lifestyle,
-            career_score=career,
-            hobbies_score=hobbies,
-            spark_factors=random.sample(sparks, 2),
-            shared_interests=shared,
-            vision_insight=f"Both express a desire for an urban lifestyle while maintaining strong ties to traditional ancestral homes during festivals. This alignment ensures no geographical friction in the coming years.",
-            communication_insight=f"{p1.full_name or 'User 1'} values directness and logic, while {p2.full_name or 'User 2'} prioritizes emotional resonance. This balanced pairing often results in highly effective problem-solving in partnerships.",
+        match, _created = create_match_between(
+            user1,
+            user2,
+            notify=False,
+            ensure_likes=False,
+            allow_blocked=True,
         )
-        # Auto-create conversation for the match
-        Conversation.objects.get_or_create(match=match)
         return match
+
 
 
 def _matched_user_ids(user):

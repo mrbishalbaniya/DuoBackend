@@ -183,7 +183,7 @@
 .cohort-matrix-wrap { overflow-x: auto; }
 
 .analytics-map {
-  height: 420px;
+  height: 280px;
   border-radius: 0.85rem;
   overflow: hidden;
   border: 1px solid var(--a-border);
@@ -277,10 +277,57 @@
 }
 
 .analytics-panel {
-  padding: 1.25rem;
+  padding: 1.1rem;
   background: var(--a-surface);
   border: 1px solid var(--a-border);
   border-radius: 1.25rem;
+  min-width: 0;
+}
+
+.analytics-panel--wide {
+  grid-column: span 2;
+}
+
+.analytics-panel--full {
+  grid-column: 1 / -1;
+}
+
+.analytics-panel > canvas,
+.analytics-chart {
+  display: block;
+  width: 100% !important;
+  max-width: 100%;
+}
+
+.analytics-chart {
+  position: relative;
+  height: 200px;
+}
+
+.analytics-panel > canvas {
+  height: 200px !important;
+  max-height: 200px !important;
+}
+
+.analytics-panel--wide > canvas,
+.analytics-panel--full > canvas {
+  height: 220px !important;
+  max-height: 220px !important;
+}
+
+.analytics-chart--doughnut,
+.analytics-panel--doughnut {
+  display: flex;
+  flex-direction: column;
+}
+
+.analytics-chart--doughnut,
+.analytics-panel--doughnut > canvas {
+  width: min(100%, 220px) !important;
+  height: 180px !important;
+  max-height: 180px !important;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .panel-header {

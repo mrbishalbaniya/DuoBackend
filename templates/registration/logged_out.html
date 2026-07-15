@@ -1,0 +1,16 @@
+{% extends "registration/base.html" %}
+
+{% load i18n jazzmin %}
+{% get_jazzmin_settings request as jazzmin_settings %}
+
+{% block content %}
+  <div class="duo-login__intro">
+    <h1 class="duo-login__title">{% trans 'Signed out' %}</h1>
+    <p class="duo-login__subtitle">
+      {% trans "Thanks for spending some quality time with the web site today." %}
+    </p>
+  </div>
+  <a class="duo-login__submit" href="{% url 'admin:index' %}" style="display: inline-flex; align-items: center; justify-content: center; text-decoration: none; box-sizing: border-box;">
+    {% trans 'Log in again' %}
+  </a>
+{% endblock %}

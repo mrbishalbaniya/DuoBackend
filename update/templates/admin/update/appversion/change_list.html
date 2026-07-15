@@ -1,0 +1,70 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+
+{% block object-tools-items %}
+  {{ block.super }}
+{% endblock %}
+
+{% block content %}
+<section class="duo-github-ota" aria-label="GitHub mobile release">
+  <div class="duo-github-ota__header">
+    <div class="duo-github-ota__intro">
+      <p class="duo-github-ota__eyebrow">Mobile OTA · GitHub</p>
+      <h2 class="duo-github-ota__title">Latest release</h2>
+      <p class="duo-github-ota__repo">
+        <span class="duo-github-ota__repo-label">Repo</span>
+        <code class="duo-github-ota__repo-code">{{ github_repo }}</code>
+      </p>
+    </div>
+    <div class="duo-github-ota__actions">
+      <a class="duo-github-ota__btn duo-github-ota__btn--ghost" href="{{ github_releases_url }}" target="_blank" rel="noopener">Releases</a>
+      <a class="duo-github-ota__btn duo-github-ota__btn--ghost" href="{{ github_latest_apk_url }}" target="_blank" rel="noopener">Latest APK</a>
+      <a class="duo-github-ota__btn duo-github-ota__btn--primary" href="{% url 'admin:update_appversion_sync_github' %}">Sync from GitHub</a>
+    </div>
+  </div>
+
+  {% if github_release %}
+  <div class="duo-github-ota__grid">
+    <div class="duo-github-ota__stat">
+      <span class="duo-github-ota__stat-label">Tag</span>
+      <a class="duo-github-ota__stat-value duo-github-ota__stat-value--link" href="{{ github_release.html_url }}" target="_blank" rel="noopener">{{ github_release.tag }}</a>
+    </div>
+    <div class="duo-github-ota__stat">
+      <span class="duo-github-ota__stat-label">Version</span>
+      <span class="duo-github-ota__stat-value">{{ github_release.version }}+{{ github_release.build_number }}</span>
+      {% if github_matches_active %}
+        <span class="duo-github-ota__badge duo-github-ota__badge--ok">Matches active OTA</span>
+      {% else %}
+        <span class="duo-github-ota__badge duo-github-ota__badge--warn">Sync recommended</span>
+      {% endif %}
+    </div>
+    <div class="duo-github-ota__stat">
+      <span class="duo-github-ota__stat-label">APK size</span>
+      <span class="duo-github-ota__stat-value">{% if github_release.file_size_bytes %}{{ github_file_size_label }}{% else %}Unknown{% endif %}</span>
+    </div>
+    <div class="duo-github-ota__stat">
+      <span class="duo-github-ota__stat-label">Published</span>
+      <span class="duo-github-ota__stat-value">{{ github_release.published_at|default:"—" }}</span>
+    </div>
+  </div>
+
+  {% if github_release.release_title %}
+  <p class="duo-github-ota__title-line">{{ github_release.release_title }}</p>
+  {% endif %}
+  {% elif github_error %}
+  <p class="duo-github-ota__error">Could not load GitHub release: {{ github_error }}</p>
+  {% endif %}
+
+  {% if active_version %}
+  <div class="duo-github-ota__active">
+    <span class="duo-github-ota__active-label">Active OTA</span>
+    <strong class="duo-github-ota__active-version">{{ active_version.version }}+{{ active_version.build_number }}</strong>
+    <span class="duo-github-ota__active-meta">{{ active_version.platform }} · {{ active_version.channel }}</span>
+    {% if active_version.apk_url %}
+      <a class="duo-github-ota__active-link" href="{{ active_version.apk_url }}" target="_blank" rel="noopener">Download APK</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{{ block.super }}
+{% endblock %}

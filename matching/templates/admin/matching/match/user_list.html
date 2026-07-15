@@ -11,22 +11,27 @@
 {% endblock %}
 
 {% block content %}
-<div class="card">
-  <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-    <h3 class="card-title mb-0">{{ title }}</h3>
-    <form method="get" class="form-inline">
-      <input
-        type="search"
-        name="q"
-        value="{{ search_query }}"
-        class="form-control form-control-sm"
-        placeholder="Search username, email, name, phone"
-      />
-      <button type="submit" class="btn btn-sm btn-primary ml-2">{% trans "Search" %}</button>
-      {% if search_query %}
-        <a href="{% url 'admin:matching_match_changelist' %}" class="btn btn-sm btn-secondary ml-2">{% trans "Clear" %}</a>
+<div class="card duo-admin-toolbar-card">
+  <div class="card-header duo-admin-toolbar">
+    <h3 class="card-title mb-0 duo-admin-toolbar__title">{{ title }}</h3>
+    <div class="duo-admin-toolbar__actions">
+      {% if create_match_url %}
+        <a href="{{ create_match_url }}" class="btn btn-sm btn-primary">{% trans "Create match" %}</a>
       {% endif %}
-    </form>
+      <form method="get" class="duo-admin-toolbar__search" role="search">
+        <input
+          type="search"
+          name="q"
+          value="{{ search_query }}"
+          class="form-control form-control-sm"
+          placeholder="{% trans 'Search username, email, name, phone' %}"
+        />
+        <button type="submit" class="btn btn-sm btn-primary">{% trans "Search" %}</button>
+        {% if search_query %}
+          <a href="{% url 'admin:matching_match_changelist' %}" class="btn btn-sm btn-secondary">{% trans "Clear" %}</a>
+        {% endif %}
+      </form>
+    </div>
   </div>
   <div class="card-body table-responsive p-0">
     <table class="table table-striped table-hover mb-0">

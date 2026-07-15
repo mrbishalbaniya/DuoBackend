@@ -11,74 +11,90 @@
 {% endblock %}
 
 {% block content %}
-<div class="card">
-  <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-    <h3 class="card-title mb-0">{{ title }}</h3>
-    <form method="get" class="form-inline">
-      <input
-        type="search"
-        name="q"
-        value="{{ search_query }}"
-        class="form-control form-control-sm"
-        placeholder="Search username, email, name, phone"
-      />
-      <button type="submit" class="btn btn-sm btn-primary ml-2">{% trans "Search" %}</button>
-      {% if search_query %}
-        <a href="{% url 'admin:chat_message_changelist' %}" class="btn btn-sm btn-secondary ml-2">{% trans "Clear" %}</a>
-      {% endif %}
-    </form>
-  </div>
-  <div class="card-body table-responsive p-0">
-    <table class="table table-striped table-hover mb-0">
-      <thead>
-        <tr>
-          <th>{% trans "ID" %}</th>
-          <th>{% trans "Username" %}</th>
-          <th>{% trans "Full name" %}</th>
-          <th>{% trans "Email" %}</th>
-          <th>{% trans "Phone" %}</th>
-          <th>{% trans "Total messages" %}</th>
-          <th>{% trans "Unread sent" %}</th>
-          <th>{% trans "Deleted" %}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for user in users %}
+<div class="duo-chat-admin">
+  <div class="card duo-chat-admin__card">
+    <div class="card-header duo-chat-admin__header">
+      <h3 class="card-title mb-0">{{ title }}</h3>
+      <form method="get" class="duo-chat-admin__search">
+        <input
+          type="search"
+          name="q"
+          value="{{ search_query }}"
+          class="form-control form-control-sm"
+          placeholder="Search username, email, name, phone"
+        />
+        <button type="submit" class="btn btn-sm btn-primary">{% trans "Search" %}</button>
+        {% if search_query %}
+          <a href="{% url 'admin:chat_message_changelist' %}" class="btn btn-sm btn-secondary">{% trans "Clear" %}</a>
+        {% endif %}
+      </form>
+    </div>
+    <div class="card-body table-responsive p-0">
+      <table class="table table-striped table-hover table-sm mb-0 duo-chat-admin__table">
+        <thead>
           <tr>
-            <td>{{ user.id }}</td>
-            <td>
-              <a href="{% url 'admin:chat_message_user' user.id %}">{{ user.username }}</a>
-            </td>
-            <td>
-              {% if user.profile %}
-                {% if user.profile.full_name %}
+            <th>{% trans "ID" %}</th>
+            <th>{% trans "Username" %}</th>
+            <th>{% trans "Full name" %}</th>
+            <th>{% trans "Email" %}</th>
+            <th>{% trans "Phone" %}</th>
+            <th class="text-end">{% trans "Messages" %}</th>
+            <th class="text-end">{% trans "Unread" %}</th>
+            <th class="text-end">{% trans "Deleted" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+            <tr>
+              <td class="text-muted">{{ user.id }}</td>
+              <td>
+                <a href="{% url 'admin:chat_message_user' user.id %}">{{ user.username }}</a>
+              </td>
+              <td>
+                {% if user.profile and user.profile.full_name %}
                   <a href="{% url 'admin:chat_message_user' user.id %}">{{ user.profile.full_name }}</a>
                 {% else %}
                   —
                 {% endif %}
-              {% else %}
-                —
-              {% endif %}
-            </td>
-            <td>{{ user.email|default:"—" }}</td>
-            <td>
-              {% if user.profile and user.profile.phone_number %}
-                {{ user.profile.phone_country_code }} {{ user.profile.phone_number }}
-              {% else %}
-                —
-              {% endif %}
-            </td>
-            <td>{{ user.message_count }}</td>
-            <td>{{ user.unread_sent_count }}</td>
-            <td>{{ user.deleted_count }}</td>
-          </tr>
-        {% empty %}
-          <tr>
-            <td colspan="8" class="text-center text-muted py-4">{% trans "No users with messages found." %}</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+              </td>
+              <td class="duo-chat-admin__ellipsis">{{ user.email|default:"—" }}</td>
+              <td>
+                {% if user.profile and user.profile.phone_number %}
+                  {{ user.profile.phone_country_code }} {{ user.profile.phone_number }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td class="text-end">{{ user.message_count }}</td>
+              <td class="text-end">{{ user.unread_sent_count }}</td>
+              <td class="text-end">{{ user.deleted_count }}</td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="8" class="text-center text-muted py-3">{% trans "No users with messages found." %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-footer duo-chat-admin__pager">
+        <span class="text-muted">
+          {% blocktrans with start=page_obj.start_index end=page_obj.end_index total=page_obj.paginator.count %}
+            Showing {{ start }}–{{ end }} of {{ total }}
+          {% endblocktrans %}
+        </span>
+        <div class="duo-chat-admin__pager-links">
+          {% if page_obj.has_previous %}
+            <a class="btn btn-sm btn-secondary" href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}page={{ page_obj.previous_page_number }}">&larr; {% trans "Prev" %}</a>
+          {% endif %}
+          <span>{% trans "Page" %} {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+          {% if page_obj.has_next %}
+            <a class="btn btn-sm btn-secondary" href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}page={{ page_obj.next_page_number }}">{% trans "Next" %} &rarr;</a>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

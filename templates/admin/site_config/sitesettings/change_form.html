@@ -6,10 +6,53 @@
   .duo-settings-note {
     margin: 0 0 1rem;
     padding: 0.75rem 1rem;
-    border-radius: 0.5rem;
-    background: rgba(13, 110, 253, 0.12);
-    border: 1px solid rgba(13, 110, 253, 0.25);
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--duo-primary) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--duo-primary) 28%, transparent);
+    color: var(--duo-text);
     font-size: 0.9rem;
+  }
+
+  .duo-settings-note strong {
+    color: var(--duo-text);
+  }
+
+  .duo-test-email {
+    margin: 1.25rem 0 0;
+    padding: 1rem;
+    border: 1px solid var(--duo-border);
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--duo-text) 3%, transparent);
+    color: var(--duo-text);
+  }
+
+  .duo-test-email__title {
+    margin: 0 0 0.35rem;
+    font-weight: 700;
+    color: var(--duo-text);
+  }
+
+  .duo-test-email__hint {
+    margin: 0 0 0.75rem;
+    font-size: 0.875rem;
+    color: var(--duo-text-muted);
+  }
+
+  .duo-test-email__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .duo-test-email label {
+    color: var(--duo-text-muted);
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .duo-test-email .vTextField {
+    max-width: 24rem;
   }
 
   .duo-secret-field {
@@ -31,7 +74,7 @@
 
   .duo-secret-status--saved {
     margin: 0 0 0.35rem;
-    color: #198754;
+    color: var(--duo-success);
     font-size: 0.85rem;
     font-weight: 600;
   }
@@ -47,15 +90,15 @@
   }
 
   .duo-secret-badge--saved {
-    background: rgba(25, 135, 84, 0.15);
-    color: #198754;
-    border: 1px solid rgba(25, 135, 84, 0.35);
+    background: color-mix(in srgb, var(--duo-success) 15%, transparent);
+    color: var(--duo-success);
+    border: 1px solid color-mix(in srgb, var(--duo-success) 35%, transparent);
   }
 
   .duo-secret-badge--empty {
-    background: rgba(255, 193, 7, 0.15);
-    color: #997404;
-    border: 1px solid rgba(255, 193, 7, 0.35);
+    background: color-mix(in srgb, var(--duo-warning) 15%, transparent);
+    color: var(--duo-warning);
+    border: 1px solid color-mix(in srgb, var(--duo-warning) 35%, transparent);
   }
 </style>
 <script>
@@ -124,6 +167,17 @@
       });
     }
 
+    function mountTestEmailPanel() {
+      var panel = document.getElementById("duo-test-email-panel");
+      var tab = document.getElementById("nodemailer-smtp-tab");
+      if (!panel || !tab || panel.dataset.mounted === "1") return;
+
+      var host = tab.querySelector(".card-body") || tab;
+      host.appendChild(panel);
+      panel.hidden = false;
+      panel.dataset.mounted = "1";
+    }
+
     document.addEventListener("click", function (event) {
       var button = event.target.closest(".duo-secret-toggle");
       if (!button) return;
@@ -131,10 +185,15 @@
       toggleSecretField(button);
     });
 
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", initSecretFields);
-    } else {
+    function boot() {
       initSecretFields();
+      mountTestEmailPanel();
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot);
+    } else {
+      boot();
     }
   })();
 </script>
@@ -146,20 +205,35 @@
   Saved values appear as dots — click <strong>Show</strong> to read them.
   Leave a field blank when saving to keep the current value.
 </p>
+
 {% if test_email_url %}
-<form method="post" action="{{ test_email_url }}" style="margin:0 0 1rem;padding:1rem;border:1px solid #dee2e6;border-radius:0.5rem;background:#f8f9fa;">
+{# Shell form stays outside the main save form; fields use form="…" #}
+<form id="duo-test-email-form" method="post" action="{{ test_email_url }}" hidden aria-hidden="true">
   {% csrf_token %}
-  <p style="margin:0 0 0.5rem;font-weight:600;">Send test email</p>
-  <p style="margin:0 0 0.75rem;font-size:0.9rem;color:#6c757d;">
+</form>
+
+<div id="duo-test-email-panel" class="duo-test-email" hidden>
+  <p class="duo-test-email__title">Send test email</p>
+  <p class="duo-test-email__hint">
     Save SMTP settings first, then send a test message to verify delivery.
   </p>
-  <div class="form-row">
+  <div class="duo-test-email__row">
     <label for="id_test_email_recipient_inline">Recipient</label>
-    <input type="email" name="test_email_recipient" id="id_test_email_recipient_inline"
-           class="vTextField" placeholder="you@example.com" style="max-width:24rem;" />
-    <button type="submit" class="btn btn-primary btn-sm" style="margin-left:0.5rem;">Send test email</button>
+    <input
+      type="email"
+      name="test_email_recipient"
+      id="id_test_email_recipient_inline"
+      class="vTextField"
+      form="duo-test-email-form"
+      placeholder="you@example.com"
+      required
+    />
+    <button type="submit" form="duo-test-email-form" class="btn btn-primary btn-sm">
+      Send test email
+    </button>
   </div>
-</form>
+</div>
 {% endif %}
+
 {{ block.super }}
 {% endblock %}

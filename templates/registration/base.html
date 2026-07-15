@@ -1,0 +1,62 @@
+{% load i18n static jazzmin admin_urls %}
+{% get_current_language as LANGUAGE_CODE %}
+{% get_current_language_bidi as LANGUAGE_BIDI %}
+{% get_jazzmin_settings request as jazzmin_settings %}
+{% get_jazzmin_ui_tweaks as jazzmin_ui %}
+
+<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE|default:'en-us' }}" {% if LANGUAGE_BIDI %}dir="rtl"{% endif %} data-bs-theme="dark" data-portal-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <meta name="robots" content="none, noarchive">
+  <title>{% block title %}{{ title }} | {{ jazzmin_settings.site_title }}{% endblock %}</title>
+
+  <link rel="stylesheet" href="{% static 'vendor/fontawesome-free/css/all.min.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/adminlte/css/adminlte.min.css' %}">
+  <link rel="stylesheet" href="{% static 'jazzmin/css/main.css' %}">
+  {% if jazzmin_settings.custom_css %}
+  <link rel="stylesheet" href="{% static jazzmin_settings.custom_css %}">
+  {% endif %}
+  <link rel="shortcut icon" href="{% static jazzmin_settings.site_icon %}" type="image/png">
+  <link rel="icon" href="{% static jazzmin_settings.site_icon %}" sizes="32x32" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  {% block extrastyle %}{% endblock %}
+  {% block extrahead %}{% endblock %}
+</head>
+<body class="duo-login-page">
+
+  <div class="duo-login">
+    <header class="duo-login__brand">
+      <a class="duo-login__logo" href="{% url 'admin:index' %}">
+        {% if jazzmin_settings.login_logo %}
+          <img src="{% static jazzmin_settings.login_logo %}" alt="" width="40" height="40">
+        {% endif %}
+        <span class="duo-login__wordmark">{{ jazzmin_settings.site_header|default:'Duo' }}</span>
+      </a>
+      <p class="duo-login__tagline">{% trans 'Administrative portal' %}</p>
+    </header>
+
+    <main class="duo-login__main">
+      <div class="duo-login__card">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+    <footer class="duo-login__footer">
+      <span>&copy; {% now 'Y' %} {{ jazzmin_settings.copyright|default:'Duo Matrimonial' }}</span>
+    </footer>
+  </div>
+
+  <script src="{% static 'admin/js/vendor/jquery/jquery.js' %}"></script>
+  <script src="{% static 'vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+  <script src="{% static 'vendor/adminlte/js/adminlte.min.js' %}"></script>
+  {% if jazzmin_settings.custom_js %}
+  <script src="{% static jazzmin_settings.custom_js %}"></script>
+  {% endif %}
+  {% block extrajs %}{% endblock %}
+</body>
+</html>

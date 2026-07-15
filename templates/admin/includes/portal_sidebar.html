@@ -18,8 +18,8 @@
   <nav class="duo-portal-sidebar__nav">
     {% get_portal_menu as portal_groups %}
     {% for group in portal_groups %}
-    <div class="duo-portal-nav-group" data-group="{{ group.id }}">
-      <button type="button" class="duo-portal-nav-group__toggle" aria-expanded="true">
+    <div class="duo-portal-nav-group is-collapsed" data-group="{{ group.id }}">
+      <button type="button" class="duo-portal-nav-group__toggle" aria-expanded="false">
         <i class="{{ group.icon }} duo-portal-nav-group__icon"></i>
         <span>{{ group.label }}</span>
         {% if group.badge %}<span class="duo-portal-badge">{{ group.badge }}</span>{% endif %}

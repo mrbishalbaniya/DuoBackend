@@ -41,8 +41,16 @@
     if (!el) return;
     charts.push(new Chart(el, {
       type: "line",
-      data: { labels: labels, datasets: [{ data: values, borderColor: color, backgroundColor: color + "22", fill: true, tension: 0.35 }] },
-      options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: c.text }, grid: { color: c.grid } }, y: { ticks: { color: c.text }, grid: { color: c.grid } } } }
+      data: { labels: labels, datasets: [{ data: values, borderColor: color, backgroundColor: color + "22", fill: true, tension: 0.35, pointRadius: 2, borderWidth: 2 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: c.text, maxTicksLimit: 8, font: { size: 10 } }, grid: { color: c.grid } },
+          y: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid } }
+        }
+      }
     }));
   }
 
@@ -51,8 +59,18 @@
     if (!el) return;
     charts.push(new Chart(el, {
       type: "doughnut",
-      data: { labels: labels, datasets: [{ data: values, backgroundColor: [BRAND.primary, BRAND.love, BRAND.accent, BRAND.success, "#8b5cf6"] }] },
-      options: { responsive: true, plugins: { legend: { position: "bottom", labels: { color: c.text, boxWidth: 12 } } } }
+      data: { labels: labels, datasets: [{ data: values, backgroundColor: [BRAND.primary, BRAND.love, BRAND.accent, BRAND.success, "#8b5cf6"], borderWidth: 0 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: "68%",
+        plugins: {
+          legend: {
+            position: "bottom",
+            labels: { color: c.text, boxWidth: 10, boxHeight: 10, padding: 10, font: { size: 11 } }
+          }
+        }
+      }
     }));
   }
 

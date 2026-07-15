@@ -110,6 +110,7 @@ INSTALLED_APPS = [
     "security",
     "analytics",
     "admin_portal",
+    "ai_profile",
     "django_celery_results",
 ]
 
@@ -310,6 +311,11 @@ MEDIA_ROOT = BASE_DIR / config("MEDIA_ROOT", default="media")
 
 OTA_PUBLISH_TOKEN = env("OTA_PUBLISH_TOKEN")
 OTA_STORAGE_BACKEND = config("OTA_STORAGE_BACKEND", default="local")  # local | s3 | r2 | spaces
+
+# Mobile APK GitHub releases (same repo DuoMobile uses for OTA fallback).
+GITHUB_MOBILE_REPO = config("GITHUB_MOBILE_REPO", default="mrbishalbaniya/duoflutter")
+GITHUB_MOBILE_APK_ASSET = config("GITHUB_MOBILE_APK_ASSET", default="app-release.apk")
+GITHUB_TOKEN = env("GITHUB_TOKEN")  # optional — raises API rate limit for private/sync
 OTA_S3_BUCKET_NAME = env("OTA_S3_BUCKET_NAME")
 OTA_S3_ACCESS_KEY_ID = env("OTA_S3_ACCESS_KEY_ID")
 OTA_S3_SECRET_ACCESS_KEY = env("OTA_S3_SECRET_ACCESS_KEY")
@@ -674,7 +680,7 @@ JAZZMIN_SETTINGS = {
     "site_icon": "admin/img/duo-mark.svg",
     "login_logo": "admin/img/duo-mark.svg",
     "site_logo_classes": "duo-brand-mark elevation-2",
-    "welcome_sign": "Welcome to Duo Administrative Portal",
+    "welcome_sign": "Please enter your details to continue",
     "copyright": "Duo Matrimonial",
     "search_model": "auth.User",
     "user_avatar": None,

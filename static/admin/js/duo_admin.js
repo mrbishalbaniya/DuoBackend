@@ -1,13 +1,11 @@
 (function () {
   "use strict";
 
-  function forceDarkTheme() {
-    document.documentElement.setAttribute("data-bs-theme", "dark");
-    try {
-      localStorage.setItem("jazzmin-theme-mode", "dark");
-    } catch (_error) {
-      /* ignore storage errors */
-    }
+  function syncThemeFromPortal() {
+    var resolved = document.documentElement.getAttribute("data-portal-theme") || "dark";
+    if (resolved !== "light" && resolved !== "dark") resolved = "dark";
+    document.documentElement.setAttribute("data-bs-theme", resolved);
+    document.documentElement.style.colorScheme = resolved;
   }
 
   function enhanceSidebarDropdowns() {
@@ -45,8 +43,10 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    forceDarkTheme();
+    syncThemeFromPortal();
     enhanceSidebarDropdowns();
     setAccountMenuTitle();
   });
+
+  window.addEventListener("duo-portal-theme-change", syncThemeFromPortal);
 })();

@@ -1,24 +1,42 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
+from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, render
 from django.urls import path, reverse
 
 from .models import Conversation, Message
 
+PAGE_SIZE = 50
+
 
 @admin.register(Conversation)
 class ConversationAdmin(admin.ModelAdmin):
-    list_display = ["id", "match", "created_at"]
+    list_display = ["id", "public_id", "match", "last_message_at", "created_at"]
+    list_per_page = 50
+    search_fields = ["public_id", "match__user1__username", "match__user2__username"]
+    readonly_fields = ["public_id", "created_at", "last_message_at"]
 
 
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
-    list_display = ["sender", "content", "timestamp", "is_read"]
+    list_display = ["sender", "short_content", "timestamp", "is_read"]
+    list_per_page = 50
     change_list_template = "admin/chat/message/user_list.html"
 
     def has_add_permission(self, request):
         return False
+
+    @admin.display(description="Content")
+    def short_content(self, obj):
+        text = (obj.content or "").strip()
+        if obj.is_deleted_for_everyone:
+            return "Deleted for everyone"
+        if not text and obj.image_url:
+            return "[Image]"
+        if len(text) > 80:
+            return text[:77] + "…"
+        return text or "—"
 
     def get_urls(self):
         urls = super().get_urls()
@@ -62,12 +80,16 @@ class MessageAdmin(admin.ModelAdmin):
                 | Q(profile__phone_number__icontains=search_query)
             )
 
+        paginator = Paginator(users, PAGE_SIZE)
+        page_obj = paginator.get_page(request.GET.get("page"))
+
         context = {
             **self.admin_site.each_context(request),
             **(extra_context or {}),
             "opts": self.model._meta,
             "title": "Select user to view messages",
-            "users": users,
+            "users": page_obj,
+            "page_obj": page_obj,
             "search_query": search_query,
             "media": self.media,
         }
@@ -88,12 +110,17 @@ class MessageAdmin(admin.ModelAdmin):
             .order_by("-timestamp")
         )
 
+        paginator = Paginator(messages, PAGE_SIZE)
+        page_obj = paginator.get_page(request.GET.get("page"))
+
         context = {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
             "title": f"Messages by {user.username}",
             "user_obj": user,
-            "messages": messages,
+            "messages": page_obj,
+            "page_obj": page_obj,
+            "message_total": paginator.count,
             "back_url": reverse("admin:chat_message_changelist"),
             "media": self.media,
         }

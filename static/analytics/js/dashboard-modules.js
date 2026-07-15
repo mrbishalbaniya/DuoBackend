@@ -73,9 +73,29 @@
     if (!canvas || !window.Chart) return null;
     destroyChart(key);
     var c = chartColors();
-    if (config.options && config.options.scales) {
+    config.options = config.options || {};
+    config.options.responsive = true;
+    config.options.maintainAspectRatio = false;
+    if (config.type === "pie" || config.type === "doughnut") {
+      var panel = canvas.closest(".analytics-panel");
+      if (panel) panel.classList.add("analytics-panel--doughnut");
+      config.options.cutout = config.options.cutout || (config.type === "doughnut" ? "65%" : undefined);
+      if (!config.options.plugins) config.options.plugins = {};
+      if (!config.options.plugins.legend) {
+        config.options.plugins.legend = { position: "bottom", labels: { color: c.color, boxWidth: 10, font: { size: 11 }, padding: 10 } };
+      } else if (config.options.plugins.legend.labels) {
+        config.options.plugins.legend.labels.color = c.color;
+        config.options.plugins.legend.labels.boxWidth = config.options.plugins.legend.labels.boxWidth || 10;
+        config.options.plugins.legend.labels.font = config.options.plugins.legend.labels.font || { size: 11 };
+      }
+    }
+    if (config.options.scales) {
       Object.values(config.options.scales).forEach(function (scale) {
-        if (scale.ticks) scale.ticks.color = c.color;
+        if (scale.ticks) {
+          scale.ticks.color = c.color;
+          scale.ticks.font = scale.ticks.font || { size: 10 };
+          scale.ticks.maxTicksLimit = scale.ticks.maxTicksLimit || 8;
+        }
         if (scale.grid) scale.grid.color = scale.grid.display === false ? scale.grid.color : c.grid;
       });
     }
@@ -416,19 +436,39 @@
         mapInstance.remove();
         mapInstance = null;
       }
-      mapInstance = L.map(mapEl, { scrollWheelZoom: false }).setView([20, 0], 2);
+      mapInstance = L.map(mapEl, { scrollWheelZoom: false }).setView([27.7, 85.3], 7);
       L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
         attribution: "&copy; OpenStreetMap",
         maxZoom: 18,
       }).addTo(mapInstance);
 
       var zones = data.heatmap_zones || [];
+      var bounds = [];
       zones.forEach(function (zone) {
-        if (!zone.lat || !zone.lng) return;
-        var radius = Math.max(8000, (zone.score || 10) * 1200);
-        var color = zone.level === "viral" ? BRAND.love : zone.level === "trending" ? BRAND.primary : BRAND.accent;
-        L.circle([zone.lat, zone.lng], { radius: radius, color: color, fillColor: color, fillOpacity: 0.35, weight: 1 }).addTo(mapInstance);
+        if (zone.lat == null || zone.lng == null || isNaN(zone.lat) || isNaN(zone.lng)) return;
+        var radiusMeters = Math.max(2500, (zone.radius_km || 8) * 1000);
+        var color = zone.level === "viral" ? BRAND.love : zone.level === "trending" ? BRAND.primary : zone.level === "high" ? BRAND.accent : "#6b7280";
+        var circle = L.circle([zone.lat, zone.lng], {
+          radius: radiusMeters,
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.38,
+          weight: 1,
+        }).addTo(mapInstance);
+        circle.bindTooltip(
+          "<strong>" + (zone.name || "Zone") + "</strong><br>" +
+          "Score: " + (zone.score || 0) + "<br>" +
+          "Active users: " + (zone.active_users || 0) + "<br>" +
+          "Matches: " + (zone.matches || 0) + " · Messages: " + (zone.messages || 0),
+          { sticky: true }
+        );
+        bounds.push([zone.lat, zone.lng]);
       });
+      if (bounds.length === 1) {
+        mapInstance.setView(bounds[0], 10);
+      } else if (bounds.length > 1) {
+        mapInstance.fitBounds(bounds, { padding: [36, 36], maxZoom: 11 });
+      }
       setTimeout(function () { mapInstance.invalidateSize(); }, 200);
     },
 

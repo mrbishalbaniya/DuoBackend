@@ -22,6 +22,7 @@
     html.setAttribute("data-portal-theme", resolved);
     html.setAttribute("data-bs-theme", resolved);
     html.setAttribute("data-portal-theme-pref", preference);
+    html.style.colorScheme = resolved;
 
     var icon = document.getElementById("theme-menu-icon");
     if (icon) {
@@ -69,10 +70,48 @@
     var shell = document.getElementById("duo-portal-shell");
     var collapseBtn = document.getElementById("sidebar-collapse");
     var mobileBtn = document.getElementById("mobile-sidebar-toggle");
+    var SIDEBAR_KEY = "duo-portal-sidebar";
+
+    function setSidebarCollapsed(collapsed) {
+      if (!shell) return;
+      shell.classList.toggle("is-collapsed", collapsed);
+      document.documentElement.setAttribute(
+        "data-portal-sidebar",
+        collapsed ? "collapsed" : "expanded"
+      );
+      localStorage.setItem(SIDEBAR_KEY, collapsed ? "collapsed" : "expanded");
+      if (collapseBtn) {
+        collapseBtn.setAttribute(
+          "aria-label",
+          collapsed ? "Expand sidebar" : "Collapse sidebar"
+        );
+        var icon = collapseBtn.querySelector("i");
+        if (icon) {
+          icon.className = collapsed ? "fas fa-angles-right" : "fas fa-angles-left";
+        }
+      }
+      if (!collapsed) {
+        openActiveNavGroup();
+      }
+    }
+
+    function openActiveNavGroup() {
+      var activeLink = document.querySelector(".duo-portal-nav-link.is-active");
+      if (!activeLink) return;
+      var activeGroup = activeLink.closest(".duo-portal-nav-group");
+      if (!activeGroup) return;
+      activeGroup.classList.remove("is-collapsed");
+      var toggle = activeGroup.querySelector(".duo-portal-nav-group__toggle");
+      if (toggle) toggle.setAttribute("aria-expanded", "true");
+    }
+
+    // Default collapsed; only expand if user previously chose expanded.
+    var stored = localStorage.getItem(SIDEBAR_KEY);
+    setSidebarCollapsed(stored !== "expanded");
 
     if (collapseBtn && shell) {
       collapseBtn.addEventListener("click", function () {
-        shell.classList.toggle("is-collapsed");
+        setSidebarCollapsed(!shell.classList.contains("is-collapsed"));
       });
     }
     if (mobileBtn && shell) {
@@ -83,7 +122,10 @@
 
     document.querySelectorAll(".duo-portal-nav-group__toggle").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        btn.closest(".duo-portal-nav-group").classList.toggle("is-collapsed");
+        var group = btn.closest(".duo-portal-nav-group");
+        if (!group) return;
+        var collapsed = group.classList.toggle("is-collapsed");
+        btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
       });
     });
   }

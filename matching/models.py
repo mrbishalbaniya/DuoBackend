@@ -38,6 +38,8 @@ class Match(models.Model):
     communication_insight = models.TextField(blank=True)
 
     class Meta:
+        verbose_name = "match"
+        verbose_name_plural = "matches"
         unique_together = ('user1', 'user2')
         indexes = [
             models.Index(fields=["-matched_at"], name="match_matched_at_idx"),

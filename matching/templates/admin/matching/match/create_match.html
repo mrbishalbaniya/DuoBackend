@@ -1,0 +1,145 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'vendor/select2/css/select2.min.css' %}">
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans "Home" %}</a>
+  &rsaquo;
+  <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo;
+  <a href="{{ back_url }}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; {% trans "Create match" %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="duo-admin-form">
+  <div class="card duo-admin-form__card">
+    <div class="duo-admin-form__header">
+      <div class="duo-admin-form__heading">
+        <h3 class="duo-admin-form__title">{% trans "Create custom match" %}</h3>
+        <p class="duo-admin-form__subtitle">
+          {% trans "Manually match two users. A chat conversation is created automatically." %}
+        </p>
+      </div>
+      <a href="{{ back_url }}" class="btn btn-sm btn-secondary duo-admin-form__back">&larr; {% trans "Back" %}</a>
+    </div>
+
+    <div class="duo-admin-form__body">
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      {% if preview %}
+        <div class="duo-settings-note">
+          <strong>{% trans "Match already exists" %}</strong>
+          <p class="duo-admin-form__hint">
+            {{ preview.user1 }} ❤ {{ preview.user2 }}
+            (#{{ preview.existing.id }} · {{ preview.existing.compatibility_score }}%).
+            {% trans "Submit again to ensure conversation exists and return to User A’s matches." %}
+          </p>
+        </div>
+      {% endif %}
+
+      <form method="post" novalidate class="duo-admin-form__fields" id="duo-create-match-form">
+        {% csrf_token %}
+        {% if preview %}
+          <input type="hidden" name="confirm_existing" value="1">
+        {% endif %}
+
+        <div class="duo-admin-form__row">
+          <div class="duo-admin-form__field">
+            <label for="{{ form.user1.id_for_label }}">{{ form.user1.label }}</label>
+            {{ form.user1 }}
+            {% if form.user1.help_text %}<p class="duo-admin-form__hint">{{ form.user1.help_text }}</p>{% endif %}
+            {% if form.user1.errors %}<div class="text-danger">{{ form.user1.errors }}</div>{% endif %}
+          </div>
+
+          <div class="duo-admin-form__field">
+            <label for="{{ form.user2.id_for_label }}">{{ form.user2.label }}</label>
+            {{ form.user2 }}
+            {% if form.user2.help_text %}<p class="duo-admin-form__hint">{{ form.user2.help_text }}</p>{% endif %}
+            {% if form.user2.errors %}<div class="text-danger">{{ form.user2.errors }}</div>{% endif %}
+          </div>
+        </div>
+
+        <div class="duo-admin-form__field duo-admin-form__field--score">
+          <label for="{{ form.compatibility_score.id_for_label }}">{{ form.compatibility_score.label }}</label>
+          {{ form.compatibility_score }}
+          {% if form.compatibility_score.help_text %}<p class="duo-admin-form__hint">{{ form.compatibility_score.help_text }}</p>{% endif %}
+          {% if form.compatibility_score.errors %}<div class="text-danger">{{ form.compatibility_score.errors }}</div>{% endif %}
+        </div>
+
+        <div class="duo-admin-form__checks">
+          <div class="duo-admin-form__check-item">
+            <label class="duo-admin-form__check">
+              {{ form.ensure_likes }}
+              <span>{{ form.ensure_likes.label }}</span>
+            </label>
+            {% if form.ensure_likes.help_text %}<p class="duo-admin-form__hint">{{ form.ensure_likes.help_text }}</p>{% endif %}
+          </div>
+
+          <div class="duo-admin-form__check-item">
+            <label class="duo-admin-form__check">
+              {{ form.notify_users }}
+              <span>{{ form.notify_users.label }}</span>
+            </label>
+          </div>
+
+          <div class="duo-admin-form__check-item">
+            <label class="duo-admin-form__check">
+              {{ form.allow_blocked }}
+              <span>{{ form.allow_blocked.label }}</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="duo-admin-form__actions">
+          <button type="submit" class="btn btn-primary">
+            {% if preview %}{% trans "Continue" %}{% else %}{% trans "Create match" %}{% endif %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<script src="{% static 'vendor/select2/js/select2.min.js' %}"></script>
+<script>
+  (function () {
+    function start() {
+      var $ = (window.django && window.django.jQuery) || window.jQuery;
+      if (!$ || !$.fn || !$.fn.select2) {
+        console.error("Select2/jQuery unavailable for user dropdown");
+        return;
+      }
+
+      $(".duo-user-select").each(function () {
+        var $el = $(this);
+        // Avoid double-init
+        if ($el.hasClass("select2-hidden-accessible")) return;
+        $el.select2({
+          width: "100%",
+          placeholder: $el.data("placeholder") || "Search users…",
+          allowClear: true,
+          minimumResultsForSearch: 0
+        });
+      });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", start);
+    } else {
+      start();
+    }
+  })();
+</script>
+{% endblock %}

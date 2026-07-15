@@ -1,5 +1,6 @@
+import json
 import math
-from typing import Tuple
+from typing import Any, Optional, Tuple
 
 CITY_COORDS = {
     "kathmandu": (27.7172, 85.324),
@@ -30,7 +31,37 @@ def find_city_center(location: str) -> Tuple[float, float]:
     return DEFAULT_CENTER
 
 
-def profile_coordinates(location: str | None, user_id: int | str | None) -> Tuple[float, float]:
+def gps_from_pref_values(pref_values: Any) -> Optional[Tuple[float, float]]:
+    if not pref_values:
+        return None
+    try:
+        data = json.loads(pref_values) if isinstance(pref_values, str) else pref_values
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    gps = data.get("gps")
+    if not isinstance(gps, dict):
+        return None
+    try:
+        lat = float(gps.get("lat", gps.get("latitude")))
+        lng = float(gps.get("lng", gps.get("longitude")))
+    except (TypeError, ValueError):
+        return None
+    if abs(lat) > 90 or abs(lng) > 180:
+        return None
+    return lat, lng
+
+
+def profile_coordinates(
+    location: str | None,
+    user_id: int | str | None,
+    pref_values: Any = None,
+) -> Tuple[float, float]:
+    gps = gps_from_pref_values(pref_values)
+    if gps is not None:
+        return gps
+
     base = find_city_center((location or "").strip() or "Kathmandu, Nepal")
     seed = _hash_seed(str(user_id if user_id is not None else location or "0"))
     angle = (seed % 360) * (math.pi / 180)

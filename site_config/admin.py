@@ -86,7 +86,6 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                     "email_relay_secret",
                     "resend_api_key_status",
                     "resend_api_key",
-                    "test_email_recipient",
                 ),
                 "description": (
                     "Nodemailer sends email via the Duo frontend relay (HTTPS). "
@@ -109,7 +108,8 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                 ),
                 "description": (
                     "SMTP transport settings used by Nodemailer. "
-                    "Port 587 + STARTTLS (email_use_tls) is typical; use port 465 + SSL for secure: true."
+                    "Port 587 + STARTTLS (email_use_tls) is typical; use port 465 + SSL for secure: true. "
+                    "Use Send test email at the bottom of this tab after saving."
                 ),
             },
         ),

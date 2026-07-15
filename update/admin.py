@@ -1,8 +1,11 @@
 import logging
+from urllib.parse import urlencode
 
 from django.contrib import admin, messages
 from django.db import DatabaseError, ProgrammingError
+from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
+from django.urls import path, reverse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
@@ -10,8 +13,16 @@ from update.forms import AppVersionAdminForm
 from update.models import AppVersion
 from update.services.admin_helpers import resolve_apk_url
 from update.services.bootstrap import seed_initial_versions, update_table_exists
+from update.services.github import (
+    GithubReleaseError,
+    fetch_latest_github_release,
+    github_latest_apk_url,
+    github_releases_page_url,
+    github_repo,
+    sync_app_version_from_github,
+)
 from update.services.storage import save_apk_file
-from update.services.version import activate_version, compute_sha256, publish_version, rollback_version
+from update.services.version import activate_version, compute_sha256, get_active_version, publish_version, rollback_version
 
 logger = logging.getLogger("update")
 
@@ -19,6 +30,7 @@ logger = logging.getLogger("update")
 @admin.register(AppVersion)
 class AppVersionAdmin(admin.ModelAdmin):
     form = AppVersionAdminForm
+    change_list_template = "admin/update/appversion/change_list.html"
     list_display = (
         "version",
         "build_number",
@@ -27,6 +39,7 @@ class AppVersionAdmin(admin.ModelAdmin):
         "status_badges",
         "display_file_size",
         "download_count",
+        "github_links",
         "published_at",
     )
     list_filter = ("platform", "channel", "is_active", "is_published", "force_update", "emergency_update")
@@ -42,6 +55,7 @@ class AppVersionAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
         "apk_preview",
+        "github_links",
     )
     fieldsets = (
         (
@@ -58,7 +72,8 @@ class AppVersionAdmin(admin.ModelAdmin):
                 ),
                 "description": (
                     "Release Title and Release Notes are shown to users in the app. "
-                    "Never paste raw GitHub release bodies here."
+                    "Prefer Sync from GitHub for version/build/APK accuracy. "
+                    "Never paste raw GitHub release bodies into Release Notes."
                 ),
             },
         ),
@@ -69,11 +84,16 @@ class AppVersionAdmin(admin.ModelAdmin):
                     "apk_file",
                     "apk_url",
                     "apk_preview",
+                    "github_links",
                     "file_size_bytes",
                     "display_file_size",
                     "checksum_sha256",
                     "download_count",
-                )
+                ),
+                "description": (
+                    "apk_url can point at the GitHub release asset "
+                    "(same download the mobile app uses)."
+                ),
             },
         ),
         (
@@ -91,7 +111,24 @@ class AppVersionAdmin(admin.ModelAdmin):
         ),
         ("Audit", {"fields": ("created_at", "updated_at")}),
     )
-    actions = ("publish_selected", "activate_selected", "rollback_selected", "deactivate_selected")
+    actions = (
+        "publish_selected",
+        "activate_selected",
+        "rollback_selected",
+        "deactivate_selected",
+        "sync_selected_from_github",
+    )
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "sync-github/",
+                self.admin_site.admin_view(self.sync_from_github_view),
+                name="update_appversion_sync_github",
+            ),
+        ]
+        return custom + urls
 
     def get_search_results(self, request, queryset, search_term):
         queryset, use_distinct = super().get_search_results(request, queryset, search_term)
@@ -127,6 +164,8 @@ class AppVersionAdmin(admin.ModelAdmin):
         except (DatabaseError, ProgrammingError):
             logger.exception("Failed to seed AppVersion rows for admin changelist")
 
+        extra_context.update(self._github_changelist_context())
+
         try:
             return super().changelist_view(request, extra_context=extra_context)
         except (DatabaseError, ProgrammingError):
@@ -143,6 +182,80 @@ class AppVersionAdmin(admin.ModelAdmin):
                 "app_label": self.model._meta.app_label,
             }
             return TemplateResponse(request, "admin/update/db_not_ready.html", context)
+
+    def _github_changelist_context(self) -> dict:
+        from types import SimpleNamespace
+
+        context: dict = {
+            "github_repo": github_repo(),
+            "github_releases_url": github_releases_page_url(),
+            "github_latest_apk_url": github_latest_apk_url(),
+            "github_release": None,
+            "github_error": None,
+            "github_matches_active": False,
+            "github_file_size_label": "",
+            "active_version": None,
+        }
+        try:
+            context["active_version"] = get_active_version(platform=AppVersion.PLATFORM_ANDROID)
+        except Exception:
+            logger.exception("Failed loading active AppVersion for GitHub panel")
+
+        try:
+            release = fetch_latest_github_release()
+            published = (
+                release.published_at.strftime("%b %d, %Y · %H:%M UTC")
+                if release.published_at is not None
+                else "—"
+            )
+            context["github_release"] = SimpleNamespace(
+                tag=release.tag,
+                version=release.version,
+                build_number=release.build_number,
+                release_title=release.release_title,
+                html_url=release.html_url,
+                file_size_bytes=release.file_size_bytes,
+                published_at=published,
+            )
+            if release.file_size_bytes > 0:
+                context["github_file_size_label"] = f"{release.file_size_bytes / (1024 * 1024):.1f} MB"
+            active = context["active_version"]
+            if active is not None:
+                context["github_matches_active"] = (
+                    active.version == release.version and active.build_number == release.build_number
+                )
+        except GithubReleaseError as exc:
+            context["github_error"] = str(exc)
+        except Exception as exc:
+            logger.exception("Unexpected GitHub panel failure")
+            context["github_error"] = str(exc)
+        return context
+
+    def sync_from_github_view(self, request):
+        if request.method not in {"GET", "POST"}:
+            return HttpResponseRedirect(reverse("admin:update_appversion_changelist"))
+
+        try:
+            row, release, created = sync_app_version_from_github(activate=True, publish=True)
+        except GithubReleaseError as exc:
+            self.message_user(request, f"GitHub sync failed: {exc}", level=messages.ERROR)
+            return HttpResponseRedirect(reverse("admin:update_appversion_changelist"))
+        except Exception as exc:
+            logger.exception("GitHub sync crashed")
+            self.message_user(request, f"GitHub sync failed: {exc}", level=messages.ERROR)
+            return HttpResponseRedirect(reverse("admin:update_appversion_changelist"))
+
+        verb = "Created" if created else "Updated"
+        self.message_user(
+            request,
+            (
+                f"{verb} OTA {row.version}+{row.build_number} from GitHub tag {release.tag}. "
+                f"APK: {release.file_size_bytes // (1024 * 1024)} MB."
+            ),
+            level=messages.SUCCESS,
+        )
+        query = urlencode({"q": str(row.build_number)})
+        return HttpResponseRedirect(f"{reverse('admin:update_appversion_changelist')}?{query}")
 
     def get_queryset(self, request):
         try:
@@ -190,6 +303,36 @@ class AppVersionAdmin(admin.ModelAdmin):
         if not url:
             return "—"
         return format_html('<a href="{}" target="_blank" rel="noopener">Download APK</a>', url)
+
+    @admin.display(description="GitHub")
+    def github_links(self, obj: AppVersion) -> str:
+        if obj is None:
+            return "—"
+        parts: list[str] = [
+            format_html(
+                '<a href="{}" target="_blank" rel="noopener">Releases</a>',
+                github_releases_page_url(),
+            )
+        ]
+        url = resolve_apk_url(obj)
+        if url and "github.com" in url:
+            parts.append(format_html('<a href="{}" target="_blank" rel="noopener">APK</a>', url))
+        else:
+            parts.append(
+                format_html(
+                    '<a href="{}" target="_blank" rel="noopener">Latest APK</a>',
+                    github_latest_apk_url(),
+                )
+            )
+        tag_guess = f"v{obj.version}-build.{obj.build_number}"
+        parts.append(
+            format_html(
+                '<a href="https://github.com/{}/releases/tag/{}" target="_blank" rel="noopener">Tag</a>',
+                github_repo(),
+                tag_guess,
+            )
+        )
+        return mark_safe(" · ".join(parts))
 
     def save_model(self, request, obj, form, change):
         uploaded = request.FILES.get("apk_file")
@@ -274,3 +417,21 @@ class AppVersionAdmin(admin.ModelAdmin):
             self.message_user(request, f"Rolled back {rolled} channel(s).", messages.SUCCESS)
         else:
             self.message_user(request, "No previous release found to roll back to.", messages.ERROR)
+
+    @admin.action(description="Sync latest from GitHub (ignore selection)")
+    def sync_selected_from_github(self, request, queryset):
+        try:
+            row, release, created = sync_app_version_from_github(activate=True, publish=True)
+        except GithubReleaseError as exc:
+            self.message_user(request, f"GitHub sync failed: {exc}", level=messages.ERROR)
+            return
+        except Exception as exc:
+            logger.exception("sync_selected_from_github failed")
+            self.message_user(request, f"GitHub sync failed: {exc}", level=messages.ERROR)
+            return
+        verb = "Created" if created else "Updated"
+        self.message_user(
+            request,
+            f"{verb} {row.version}+{row.build_number} from {release.tag}.",
+            level=messages.SUCCESS,
+        )

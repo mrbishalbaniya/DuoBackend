@@ -85,10 +85,11 @@
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { color: c.color }, grid: { color: c.grid } },
-          y: { ticks: { color: c.color }, grid: { color: c.grid } },
+          x: { ticks: { color: c.color, maxTicksLimit: 8, font: { size: 10 } }, grid: { color: c.grid } },
+          y: { ticks: { color: c.color, font: { size: 10 } }, grid: { color: c.grid } },
         },
       },
     }));
@@ -110,10 +111,11 @@
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { color: c.color }, grid: { display: false } },
-          y: { ticks: { color: c.color }, grid: { color: c.grid } },
+          x: { ticks: { color: c.color, font: { size: 10 } }, grid: { display: false } },
+          y: { ticks: { color: c.color, font: { size: 10 } }, grid: { color: c.grid } },
         },
       },
     }));
@@ -140,10 +142,11 @@
       options: {
         indexAxis: "y",
         responsive: true,
+        maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { color: c.color }, grid: { color: c.grid } },
-          y: { ticks: { color: c.color }, grid: { display: false } },
+          x: { ticks: { color: c.color, font: { size: 10 } }, grid: { color: c.grid } },
+          y: { ticks: { color: c.color, font: { size: 10 } }, grid: { display: false } },
         },
       },
     }));

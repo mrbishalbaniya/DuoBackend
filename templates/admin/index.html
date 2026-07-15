@@ -73,19 +73,27 @@
   <div class="duo-dashboard__grid">
     <section class="duo-panel duo-panel--wide">
       <header class="duo-panel__header"><h3>{% trans "Revenue" %}</h3></header>
-      <canvas id="chart-revenue" height="100"></canvas>
+      <div class="duo-chart duo-chart--line">
+        <canvas id="chart-revenue"></canvas>
+      </div>
     </section>
     <section class="duo-panel duo-panel--wide">
       <header class="duo-panel__header"><h3>{% trans "User Growth" %}</h3></header>
-      <canvas id="chart-users" height="100"></canvas>
+      <div class="duo-chart duo-chart--line">
+        <canvas id="chart-users"></canvas>
+      </div>
     </section>
     <section class="duo-panel">
       <header class="duo-panel__header"><h3>{% trans "Platform Usage" %}</h3></header>
-      <canvas id="chart-platform" height="140"></canvas>
+      <div class="duo-chart duo-chart--doughnut">
+        <canvas id="chart-platform"></canvas>
+      </div>
     </section>
     <section class="duo-panel">
       <header class="duo-panel__header"><h3>{% trans "Gender Distribution" %}</h3></header>
-      <canvas id="chart-gender" height="140"></canvas>
+      <div class="duo-chart duo-chart--doughnut">
+        <canvas id="chart-gender"></canvas>
+      </div>
     </section>
     <section class="duo-panel">
       <header class="duo-panel__header"><h3>{% trans "System Health" %}</h3></header>
