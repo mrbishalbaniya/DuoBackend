@@ -149,7 +149,7 @@ class FCMService:
         elif platform == "ios":
             aps: dict[str, Any] = {
                 "alert": {"title": title, "body": body},
-                "sound": "default" if sound_enabled else "",
+                "sound": "duo_notification.wav" if sound_enabled else "",
                 "mutable-content": 1 if image_url else 0,
             }
             if badge:

@@ -28,6 +28,7 @@ def preference_payload(prefs: NotificationPreference) -> dict:
     return {
         "push_enabled": prefs.push_enabled,
         "chat_enabled": prefs.chat_enabled,
+        "calls_enabled": prefs.calls_enabled,
         "match_enabled": prefs.match_enabled,
         "likes_enabled": prefs.likes_enabled,
         "marketing_enabled": prefs.marketing_enabled,
