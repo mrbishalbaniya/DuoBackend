@@ -1,6 +1,9 @@
 import json
 import math
+from datetime import timedelta
 from typing import Any, Optional, Tuple
+
+from django.utils import timezone
 
 CITY_COORDS = {
     "kathmandu": (27.7172, 85.324),
@@ -14,6 +17,75 @@ CITY_COORDS = {
 }
 
 DEFAULT_CENTER = (27.7172, 85.324)
+LIVE_LOCATION_MAX_AGE = timedelta(minutes=15)
+
+
+def is_live_location_fresh(updated_at) -> bool:
+    if not updated_at:
+        return False
+    return timezone.now() - updated_at <= LIVE_LOCATION_MAX_AGE
+
+
+def update_pref_values_gps(pref_values: Any, lat: float, lng: float) -> str:
+    try:
+        data = json.loads(pref_values) if isinstance(pref_values, str) else dict(pref_values or {})
+    except (TypeError, ValueError, json.JSONDecodeError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    data["gps"] = {"lat": lat, "lng": lng}
+    return json.dumps(data)
+
+
+def resolve_map_coordinates(
+    *,
+    location: str | None,
+    user_id: int | str | None,
+    pref_values: Any = None,
+    live_latitude: float | None = None,
+    live_longitude: float | None = None,
+    live_location_updated_at=None,
+) -> Tuple[float, float]:
+    if (
+        live_latitude is not None
+        and live_longitude is not None
+        and is_live_location_fresh(live_location_updated_at)
+        and abs(live_latitude) <= 90
+        and abs(live_longitude) <= 180
+    ):
+        return live_latitude, live_longitude
+
+    gps = gps_from_pref_values(pref_values)
+    if gps is not None:
+        return gps
+
+    return profile_coordinates(location, user_id, pref_values)
+
+
+def map_location_payload(profile) -> dict[str, Any]:
+    lat, lng = resolve_map_coordinates(
+        location=profile.location,
+        user_id=getattr(profile, "user_id", None),
+        pref_values=profile.pref_values,
+        live_latitude=profile.live_latitude,
+        live_longitude=profile.live_longitude,
+        live_location_updated_at=profile.live_location_updated_at,
+    )
+    is_live = bool(
+        profile.live_latitude is not None
+        and profile.live_longitude is not None
+        and is_live_location_fresh(profile.live_location_updated_at)
+    )
+    return {
+        "map_latitude": lat,
+        "map_longitude": lng,
+        "location_is_live": is_live,
+        "location_updated_at": (
+            profile.live_location_updated_at.isoformat()
+            if profile.live_location_updated_at
+            else None
+        ),
+    }
 
 
 def _hash_seed(value: str) -> int:

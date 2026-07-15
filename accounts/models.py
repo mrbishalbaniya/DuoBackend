@@ -102,6 +102,9 @@ class Profile(models.Model):
         blank=True,
         help_text="User IDs for friends_except / only_these modes.",
     )
+    live_latitude = models.FloatField(null=True, blank=True)
+    live_longitude = models.FloatField(null=True, blank=True)
+    live_location_updated_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -117,6 +120,15 @@ class Profile(models.Model):
             models.Index(fields=["-created_at"], name="profile_created_desc_idx"),
         ]
 
+    def is_matched_with(self, viewer_id: int) -> bool:
+        from django.db.models import Q
+        from matching.models import Match
+
+        return Match.objects.filter(
+            Q(user1_id=self.user_id, user2_id=viewer_id)
+            | Q(user1_id=viewer_id, user2_id=self.user_id)
+        ).exists()
+
     def is_location_visible_to(self, viewer) -> bool:
         """Whether `viewer` (User or user id) may see this profile's map location."""
         if self.location_ghost_mode:
@@ -127,6 +139,9 @@ class Profile(models.Model):
         try:
             viewer_id = int(viewer_id)
         except (TypeError, ValueError):
+            return False
+
+        if not self.is_matched_with(viewer_id):
             return False
 
         mode = self.location_visibility or "friends"

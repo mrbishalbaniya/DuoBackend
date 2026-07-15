@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Swipe, Match
 from accounts.serializers import LOCATION_PRIVACY_FIELDS, ProfileSerializer
+from accounts.geo import map_location_payload
 
 
 class SwipeSerializer(serializers.Serializer):
@@ -35,6 +36,8 @@ class MatchSerializer(serializers.ModelSerializer):
         data["location_shared"] = shared
         if not shared:
             data["location"] = ""
+        else:
+            data.update(map_location_payload(profile))
         return data
 
 

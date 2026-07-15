@@ -59,6 +59,9 @@ class ProfileSerializer(serializers.ModelSerializer):
             "location_ghost_mode",
             "location_visibility",
             "location_visibility_friends",
+            "live_latitude",
+            "live_longitude",
+            "live_location_updated_at",
             "is_verified",
             "is_onboarded",
             "profile_completeness",
@@ -76,6 +79,9 @@ class ProfileSerializer(serializers.ModelSerializer):
             "is_premium",
             "subscription_expires_at",
             "wallet_balance",
+            "live_latitude",
+            "live_longitude",
+            "live_location_updated_at",
         ]
 
     def to_representation(self, instance):
@@ -95,6 +101,9 @@ class ProfileSerializer(serializers.ModelSerializer):
             for field in LOCATION_PRIVACY_FIELDS:
                 data.pop(field, None)
             data.pop("wallet_balance", None)
+            data.pop("live_latitude", None)
+            data.pop("live_longitude", None)
+            data.pop("live_location_updated_at", None)
             data["email"] = ""
             data["phone_country_code"] = ""
             data["phone_number"] = ""
@@ -148,6 +157,10 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        if attrs.get("location_ghost_mode"):
+            attrs["live_latitude"] = None
+            attrs["live_longitude"] = None
+            attrs["live_location_updated_at"] = None
         request = self.context.get("request")
         user = getattr(request, "user", None) if request else None
         friend_ids = attrs.get("location_visibility_friends")
