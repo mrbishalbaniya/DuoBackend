@@ -144,6 +144,91 @@ def execute_message_reaction_push(message_id: int, reactor_id: int, emoji: str) 
     )
 
 
+def execute_chat_service_message_push(payload: dict) -> None:
+    """Push for a message sent through chat-service (DuoBackend/chat-service).
+
+    Unlike execute_chat_message_push, there's no local chat.Message row to
+    read — chat-service already resolved sender/recipient/mute status on its
+    side (it owns that data now) and sent everything needed in ``payload``.
+    """
+    from notifications.constants import CHAT_MESSAGE
+    from notifications.services.notification_service import default_icon_url, send_push_notification
+
+    recipient_id = payload.get("recipient_id")
+    sender_id = payload.get("sender_id")
+    if not recipient_id or not sender_id or recipient_id == sender_id:
+        return
+
+    conversation_public_id = payload.get("conversation_public_id", "")
+    sender_name = (payload.get("sender_name") or "Someone").strip()
+    content = (payload.get("content") or "").strip()
+    message_type = payload.get("message_type") or "text"
+
+    if message_type == "system":
+        body = content or "Security event in chat"
+    elif content:
+        body = content
+    elif payload.get("has_image"):
+        body = "Sent you a photo"
+    else:
+        body = "Sent you a new message"
+
+    link = f"{_frontend_url()}/chat?conversation={conversation_public_id}"
+    photo = (payload.get("sender_photo") or "").strip()
+
+    send_push_notification(
+        user_id=recipient_id,
+        notification_type=CHAT_MESSAGE,
+        title=sender_name,
+        body=body[:200],
+        data={
+            "conversation_id": str(conversation_public_id),
+            "sender_id": str(sender_id),
+            "url": f"/chat?conversation={conversation_public_id}",
+            "theme": "duo",
+        },
+        link=link,
+        icon=photo or default_icon_url(),
+        image=photo,
+        tag=f"chat-{conversation_public_id}",
+        skip_if_online=True,
+    )
+
+
+def execute_chat_service_reaction_push(payload: dict) -> None:
+    from notifications.constants import MESSAGE_REACTION
+    from notifications.services.notification_service import default_icon_url, send_push_notification
+
+    recipient_id = payload.get("recipient_id")
+    reactor_id = payload.get("reactor_id")
+    if not recipient_id or not reactor_id or recipient_id == reactor_id:
+        return
+
+    conversation_public_id = payload.get("conversation_public_id", "")
+    message_id = payload.get("message_id")
+    reactor_name = (payload.get("reactor_name") or "Someone").strip()
+    emoji = payload.get("emoji") or ""
+    body = f"{reactor_name} reacted {emoji} to your message"
+    link = f"{_frontend_url()}/chat?conversation={conversation_public_id}"
+
+    send_push_notification(
+        user_id=recipient_id,
+        notification_type=MESSAGE_REACTION,
+        title="New reaction",
+        body=body[:200],
+        data={
+            "conversation_id": str(conversation_public_id),
+            "message_id": str(message_id),
+            "emoji": emoji,
+            "reactor_id": str(reactor_id),
+            "url": f"/chat?conversation={conversation_public_id}",
+        },
+        link=link,
+        icon=(payload.get("reactor_photo") or "").strip() or default_icon_url(),
+        tag=f"reaction-{message_id}",
+    )
+
+
 def execute_like_push(from_user_id: int, to_user_id: int, action: str) -> None:
     from django.contrib.auth import get_user_model
     from notifications.constants import PROFILE_LIKE, SUPER_LIKE

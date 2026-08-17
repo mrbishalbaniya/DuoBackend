@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import (
+    ChatConfigView,
     ConversationListView,
     MessageListView,
     MessageDeleteView,
@@ -19,6 +20,7 @@ from .views import (
 
 # conversation_id accepts 10-digit public_id (or legacy short pk).
 urlpatterns = [
+    path('config/', ChatConfigView.as_view(), name='chat_config'),
     path('conversations/', ConversationListView.as_view(), name='conversation_list'),
     path('conversations/<str:conversation_id>/', ConversationDetailView.as_view(), name='conversation_detail'),
     path('conversations/<str:conversation_id>/settings/', ConversationSettingsView.as_view(), name='conversation_settings'),

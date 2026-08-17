@@ -45,6 +45,10 @@ urlpatterns = [
     path("api/security/", include("security.urls")),
     path("api/analytics/", include("analytics.urls")),
     path("api/portal/", include("admin_portal.urls")),
+    # Internal service-to-service API for chat-service (DuoBackend/chat-service).
+    # Guarded by CHAT_INTERNAL_TOKEN, not JWT — see duo_project/security/internal_auth.py.
+    path("api/internal/notifications/", include("notifications.internal_urls")),
+    path("api/internal/matching/", include("matching.internal_urls")),
 ]
 
 if settings.DEBUG:

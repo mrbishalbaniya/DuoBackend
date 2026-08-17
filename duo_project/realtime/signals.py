@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
+from accounts.models import Profile
 from chat.models import Message
 from matching.models import Match, ProfileVisit, Swipe
 from subscriptions.models import SubscriptionPayment
@@ -20,6 +21,8 @@ from duo_project.realtime.broadcast import (
     broadcast_profile_viewed,
     broadcast_subscription_update,
 )
+from duo_project.tasks.chat_sync import delete_match_task, sync_match_task, sync_user_task
+from duo_project.tasks.enqueue import safe_delay
 
 logger = logging.getLogger("duo.realtime")
 
@@ -52,6 +55,7 @@ def on_swipe_realtime(sender, instance, created, **kwargs):
 @receiver(post_save, sender=Match)
 def on_match_realtime(sender, instance, created, **kwargs):
     broadcast_activity_refresh()
+    safe_delay(sync_match_task, instance.id)
     if created:
         conversation_public_id = None
         try:
@@ -64,6 +68,16 @@ def on_match_realtime(sender, instance, created, **kwargs):
     old_score = _match_score_before.pop(instance.pk, None)
     if old_score is not None and old_score != int(instance.compatibility_score or 0):
         broadcast_compatibility_updated(match=instance)
+
+
+@receiver(post_delete, sender=Match)
+def on_match_deleted(sender, instance, **kwargs):
+    safe_delay(delete_match_task, instance.id)
+
+
+@receiver(post_save, sender=Profile)
+def on_profile_saved(sender, instance, **kwargs):
+    safe_delay(sync_user_task, instance.user_id)
 
 
 @receiver(post_save, sender=ProfileVisit)

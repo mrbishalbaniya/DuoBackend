@@ -68,6 +68,8 @@ class IntegrationSettings:
     webrtc_turn_credential: str
     webrtc_turn_secret: str
     webrtc_turn_ttl: int
+    chat_backend: str
+    chat_service_public_url: str
 
 
 def invalidate_integration_cache() -> None:
@@ -91,6 +93,12 @@ def _pick_int(db_value, env_value, default: int) -> int:
         except (TypeError, ValueError):
             pass
     return default
+
+
+def _pick_chat_backend(db_value, env_value: str) -> str:
+    valid = {"django", "microservice"}
+    candidate = str(db_value or env_value or "django").strip().lower()
+    return candidate if candidate in valid else "django"
 
 
 def _pick_bool(db_value, env_value, default: bool) -> bool:
@@ -314,6 +322,11 @@ def get_integration_settings() -> IntegrationSettings:
             db("webrtc_turn_ttl"),
             getattr(settings, "WEBRTC_TURN_TTL", 86400),
             86400,
+        ),
+        chat_backend=_pick_chat_backend(db("chat_backend"), getattr(settings, "CHAT_BACKEND_MODE", "django")),
+        chat_service_public_url=_pick_str(
+            db("chat_service_public_url"),
+            getattr(settings, "CHAT_SERVICE_PUBLIC_URL", ""),
         ),
     )
 

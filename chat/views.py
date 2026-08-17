@@ -1,7 +1,8 @@
+from django.conf import settings
 from django.utils import timezone
 from django.core.signing import TimestampSigner
 from rest_framework import status, parsers
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Q
@@ -101,6 +102,34 @@ def _set_mutual_swipes_to_skip(user, other_user):
 def _delete_match_and_invalidate(convo, user, other_user):
     convo.match.delete()
     invalidate_match_users(user.id, other_user.id, reason="unmatch")
+
+
+class ChatConfigView(APIView):
+    """Public runtime config: which backend serves chat (Django vs chat-service).
+
+    Unauthenticated by design — the frontend needs this before it knows which
+    base URL to send authenticated requests to. See
+    duo_project/runtime_config.py (admin-overridable, ~5min cache) and
+    DuoFrontend's lib/chatConfig.ts.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(
+        tags=["Chat"],
+        summary="Get chat backend config",
+        responses={200: OpenApiResponse(description='{"backend": "django"|"microservice", "service_url": "..."}')},
+    )
+    def get(self, request):
+        from duo_project.runtime_config import get_integration_settings
+
+        cfg = get_integration_settings()
+        service_url = cfg.chat_service_public_url or getattr(settings, "CHAT_SERVICE_URL", "")
+        return Response({
+            "backend": cfg.chat_backend,
+            "service_url": service_url if cfg.chat_backend == "microservice" else "",
+        })
 
 
 class ConversationListView(APIView):

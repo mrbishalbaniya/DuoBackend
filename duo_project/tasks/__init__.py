@@ -25,6 +25,7 @@ NETWORK_RETRY_KWARGS: dict[str, Any] = {
     "max_retries": 5,
 }
 
+from duo_project.tasks import chat_sync as chat_sync  # noqa: E402, F401
 from duo_project.tasks import email as email  # noqa: E402, F401
 from duo_project.tasks import maintenance as maintenance  # noqa: E402, F401
 from duo_project.tasks import monitoring as monitoring  # noqa: E402, F401

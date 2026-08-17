@@ -27,6 +27,33 @@ class SiteSettings(models.Model):
         help_text="Comma-separated redirect URIs allowed for token exchange (include web and mobile callbacks).",
     )
 
+    # Chat backend — which implementation serves conversations/messages/websocket.
+    CHAT_BACKEND_DJANGO = "django"
+    CHAT_BACKEND_MICROSERVICE = "microservice"
+    CHAT_BACKEND_CHOICES = [
+        (CHAT_BACKEND_DJANGO, "Django (built-in chat app)"),
+        (CHAT_BACKEND_MICROSERVICE, "Go microservice (chat-service)"),
+    ]
+
+    chat_backend = models.CharField(
+        max_length=16,
+        choices=CHAT_BACKEND_CHOICES,
+        default=CHAT_BACKEND_DJANGO,
+        help_text=(
+            "Which backend serves chat traffic. Switching takes effect for new page "
+            "loads within a few minutes (cached) — no redeploy needed on either side."
+        ),
+    )
+    chat_service_public_url = models.URLField(
+        max_length=500,
+        blank=True,
+        help_text=(
+            "Public base URL of chat-service (e.g. https://chat.duoapp.com/api), used by the "
+            "frontend when chat_backend=microservice. Leave blank to fall back to "
+            "CHAT_SERVICE_PUBLIC_URL / CHAT_SERVICE_URL from environment."
+        ),
+    )
+
     # WebRTC voice/video calls (STUN/TURN for peer discovery)
     webrtc_stun_urls = models.TextField(
         blank=True,

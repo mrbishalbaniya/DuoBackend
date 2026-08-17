@@ -56,6 +56,20 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Chat backend",
+            {
+                "fields": (
+                    "chat_backend",
+                    "chat_service_public_url",
+                ),
+                "description": (
+                    "Switch conversations/messages/websocket between the built-in Django chat "
+                    "app and the standalone Go chat-service. Takes effect within a few minutes "
+                    "(cached) without a redeploy."
+                ),
+            },
+        ),
+        (
             "WebRTC calls (STUN/TURN)",
             {
                 "fields": (

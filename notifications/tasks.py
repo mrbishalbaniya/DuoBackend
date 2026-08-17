@@ -22,6 +22,16 @@ def send_message_reaction_push_task(message_id: int, reactor_id: int, emoji: str
     workers.execute_message_reaction_push(message_id, reactor_id, emoji)
 
 
+@shared_task(name="notifications.tasks.send_chat_service_message_push", **NETWORK_RETRY_KWARGS)
+def send_chat_service_message_push_task(payload: dict) -> None:
+    workers.execute_chat_service_message_push(payload)
+
+
+@shared_task(name="notifications.tasks.send_chat_service_reaction_push", **NETWORK_RETRY_KWARGS)
+def send_chat_service_reaction_push_task(payload: dict) -> None:
+    workers.execute_chat_service_reaction_push(payload)
+
+
 @shared_task(name="notifications.tasks.send_like_push", **NETWORK_RETRY_KWARGS)
 def send_like_push_task(from_user_id: int, to_user_id: int, action: str) -> None:
     workers.execute_like_push(from_user_id, to_user_id, action)

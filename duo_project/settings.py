@@ -309,6 +309,20 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 MEDIA_URL = config("MEDIA_URL", default="/media/")
 MEDIA_ROOT = BASE_DIR / config("MEDIA_ROOT", default="media")
 
+# chat-service (DuoBackend/chat-service) — standalone Go microservice.
+# See chat-service/README.md for the sync contract these values gate.
+CHAT_SERVICE_URL = env("CHAT_SERVICE_URL", default="")
+CHAT_INTERNAL_TOKEN = env("CHAT_INTERNAL_TOKEN", default="")
+
+# Which backend serves chat traffic — env default, overridable live from
+# Django admin (site_config.SiteSettings.chat_backend). See
+# duo_project/runtime_config.py and chat/views.py's ChatConfigView.
+CHAT_BACKEND_MODE = config("CHAT_BACKEND_MODE", default="django")
+# Public-facing chat-service URL for browser clients — may differ from
+# CHAT_SERVICE_URL (which can be an internal-network address used only for
+# server-to-server sync/notify calls). Falls back to CHAT_SERVICE_URL.
+CHAT_SERVICE_PUBLIC_URL = env("CHAT_SERVICE_PUBLIC_URL", default=CHAT_SERVICE_URL)
+
 OTA_PUBLISH_TOKEN = env("OTA_PUBLISH_TOKEN")
 OTA_STORAGE_BACKEND = config("OTA_STORAGE_BACKEND", default="local")  # local | s3 | r2 | spaces
 
