@@ -103,6 +103,16 @@ services:
         sync: false
       - key: DJANGO_SUPERUSER_PASSWORD
         sync: false
+      # chat-service (github.com/mrbishalbaniya/duochatmicroservice) — leave
+      # blank to keep chat on the built-in Django app. See chat-service/README.md.
+      - key: CHAT_SERVICE_URL
+        sync: false
+      - key: CHAT_SERVICE_PUBLIC_URL
+        sync: false
+      - key: CHAT_INTERNAL_TOKEN
+        sync: false
+      - key: CHAT_BACKEND_MODE
+        value: "django"
 
   - type: redis
     name: duo-redis

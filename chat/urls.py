@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import (
+    BlockedUsersListView,
     ChatConfigView,
     ConversationListView,
     MessageListView,
@@ -15,12 +16,15 @@ from .views import (
     ConversationUnmatchBlockView,
     ConversationReportView,
     ConversationSecurityEventView,
+    UnblockUserView,
     WebSocketTicketView,
 )
 
 # conversation_id accepts 10-digit public_id (or legacy short pk).
 urlpatterns = [
     path('config/', ChatConfigView.as_view(), name='chat_config'),
+    path('blocked/', BlockedUsersListView.as_view(), name='blocked_users_list'),
+    path('blocked/<int:user_id>/unblock/', UnblockUserView.as_view(), name='unblock_user'),
     path('conversations/', ConversationListView.as_view(), name='conversation_list'),
     path('conversations/<str:conversation_id>/', ConversationDetailView.as_view(), name='conversation_detail'),
     path('conversations/<str:conversation_id>/settings/', ConversationSettingsView.as_view(), name='conversation_settings'),

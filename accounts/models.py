@@ -83,6 +83,13 @@ class Profile(models.Model):
     is_verified = models.BooleanField(default=False)
     is_onboarded = models.BooleanField(default=False)
 
+    LANGUAGE_CHOICES = [
+        ("en", "English"),
+        ("ne", "नेपाली (Nepali)"),
+    ]
+    app_language = models.CharField(max_length=8, choices=LANGUAGE_CHOICES, default="en")
+    app_region = models.CharField(max_length=100, blank=True, default="Nepal")
+
     LOCATION_VISIBILITY_CHOICES = [
         ("friends", "My friends"),
         ("friends_except", "My friends, except…"),

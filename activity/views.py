@@ -1,4 +1,5 @@
 from drf_spectacular.utils import extend_schema
+from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -49,6 +50,6 @@ class ActivityZonesView(APIView):
         return Response(
             {
                 "zones": zones,
-                "updated_at": __import__("django.utils.timezone", fromlist=["timezone"]).timezone.now().isoformat(),
+                "updated_at": timezone.now().isoformat(),
             }
         )

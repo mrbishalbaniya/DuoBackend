@@ -93,6 +93,36 @@ class SwipeView(APIView):
             'match': match_data,
         })
 
+    @staticmethod
+    def _upsert_swipe(from_user, to_user, action, *, attempts: int = 5):
+        last_error = None
+        for attempt in range(attempts):
+            try:
+                with transaction.atomic():
+                    return Swipe.objects.update_or_create(
+                        from_user=from_user,
+                        to_user=to_user,
+                        defaults={"action": action},
+                    )
+            except OperationalError as exc:
+                last_error = exc
+                if attempt == attempts - 1:
+                    raise
+                time.sleep(0.05 * (2**attempt))
+        raise last_error  # pragma: no cover
+
+    def _create_match(self, user1, user2):
+        from matching.services import create_match_between
+
+        match, _created = create_match_between(
+            user1,
+            user2,
+            notify=False,
+            ensure_likes=False,
+            allow_blocked=True,
+        )
+        return match
+
 
 class UnlikeView(APIView):
     """Remove a pending like or superlike before a match is formed."""
@@ -134,37 +164,6 @@ class UnlikeView(APIView):
         invalidate_user_caches(request.user.id, reason="unlike")
         invalidate_user_caches(other_user_id, reason="unlike")
         return Response({"detail": "Like removed."})
-
-    @staticmethod
-    def _upsert_swipe(from_user, to_user, action, *, attempts: int = 5):
-        last_error = None
-        for attempt in range(attempts):
-            try:
-                with transaction.atomic():
-                    return Swipe.objects.update_or_create(
-                        from_user=from_user,
-                        to_user=to_user,
-                        defaults={"action": action},
-                    )
-            except OperationalError as exc:
-                last_error = exc
-                if attempt == attempts - 1:
-                    raise
-                time.sleep(0.05 * (2**attempt))
-        raise last_error  # pragma: no cover
-
-    def _create_match(self, user1, user2):
-        from matching.services import create_match_between
-
-        match, _created = create_match_between(
-            user1,
-            user2,
-            notify=False,
-            ensure_likes=False,
-            allow_blocked=True,
-        )
-        return match
-
 
 
 def _matched_user_ids(user):

@@ -32,6 +32,26 @@
 
 ---
 
+## chat-service (Render) — optional, separate repo
+
+`github.com/mrbishalbaniya/duochatmicroservice`. Full step-by-step in that
+repo's `README.md` → "Deploying (Render)". Summary of what links the two
+services together:
+
+| Variable | Where | Must match |
+|----------|-------|------------|
+| `DJANGO_SECRET_KEY` (chat-service) | Render → duo-chat-service | = backend's `SECRET_KEY` |
+| `CHAT_INTERNAL_TOKEN` | Both services | same random value on both |
+| `MONOLITH_URL` (chat-service) | Render → duo-chat-service | backend's public URL |
+| `CHAT_SERVICE_URL` / `CHAT_SERVICE_PUBLIC_URL` (backend) | Render → duo-backend | chat-service's public URL |
+
+Chat stays on the built-in Django app until you flip
+`site_config.SiteSettings.chat_backend` to `microservice` in Django admin —
+that live toggle, not env vars or a redeploy, is what cuts traffic over. See
+`chat-service/README.md` → "Switching between Django and chat-service".
+
+---
+
 ## Frontend (Vercel)
 
 | Variable | Example | Required |

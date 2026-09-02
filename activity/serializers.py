@@ -15,6 +15,6 @@ class ActivityGridQuerySerializer(serializers.Serializer):
         if attrs["lon_min"] > attrs["lon_max"]:
             raise serializers.ValidationError("lon_min must be <= lon_max")
         span = (attrs["lat_max"] - attrs["lat_min"]) * (attrs["lon_max"] - attrs["lon_min"])
-        if span > 12000:
+        if span > 64800:  # full globe: 180 lat span * 360 lon span
             raise serializers.ValidationError("Grid bbox too large")
         return attrs

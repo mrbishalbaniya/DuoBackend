@@ -1,3 +1,4 @@
+import logging
 import secrets
 
 from django.core.cache import cache
@@ -17,7 +18,7 @@ from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.utils import timezone
 from google.auth.exceptions import GoogleAuthError
-from .auth_cookies import set_auth_cookies
+from .auth_cookies import clear_auth_cookies, set_auth_cookies
 from .throttling import AuthRateThrottle, UploadRateThrottle
 from .serializers import (
     RegisterSerializer,
@@ -29,6 +30,7 @@ from .serializers import (
     PasswordForgotSerializer,
     PasswordResetSerializer,
     PasswordChangeSerializer,
+    DeleteAccountSerializer,
 )
 from .google_auth import (
     exchange_google_auth_code,
@@ -52,6 +54,7 @@ from duo_project.cache.invalidation import invalidate_profile_caches, invalidate
 from duo_project.cache.lookups import get_static_lookups
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 class RegisterView(generics.CreateAPIView):
@@ -169,9 +172,11 @@ class GoogleOAuthCallbackView(APIView):
             id_token = exchange_google_auth_code(code, cfg.google_redirect_uri)
             idinfo = verify_google_id_token(id_token)
             user, _created = get_or_create_google_user(idinfo)
-        except (ValueError, GoogleAuthError):
+        except (ValueError, GoogleAuthError) as exc:
+            logger.warning("Google OAuth callback failed: %s", exc)
             return redirect(login_error_url)
         except Exception:
+            logger.exception("Google OAuth callback failed unexpectedly")
             return redirect(login_error_url)
 
         refresh = RefreshToken.for_user(user)
@@ -390,6 +395,56 @@ class PasswordChangeView(APIView):
             {"changed": True, "message": "Password updated successfully."},
             status=status.HTTP_200_OK,
         )
+
+
+class DeleteAccountView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Deactivate the authenticated user's account",
+        request=DeleteAccountSerializer,
+    )
+    def post(self, request):
+        serializer = DeleteAccountSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        if user.has_usable_password() and not user.check_password(
+            serializer.validated_data.get("password", "")
+        ):
+            return Response(
+                {"detail": "Incorrect password."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        profile = getattr(user, "profile", None)
+        if profile is not None:
+            profile.is_onboarded = False
+            profile.save(update_fields=["is_onboarded", "updated_at"])
+
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+
+        try:
+            from security.services import security_service
+
+            security_service.revoke_all_sessions(user, keep_current=False)
+        except Exception:
+            logging.getLogger(__name__).exception("delete_account_revoke_sessions_failed")
+
+        try:
+            from notifications.models import DeviceToken
+
+            DeviceToken.objects.filter(user=user).delete()
+        except Exception:
+            pass
+
+        response = Response(
+            {"deleted": True, "message": "Your account has been deactivated."},
+            status=status.HTTP_200_OK,
+        )
+        clear_auth_cookies(response)
+        return response
 
 
 class MyProfileView(APIView):

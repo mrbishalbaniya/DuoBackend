@@ -10,6 +10,7 @@ from rest_framework.permissions import AllowAny, IsAdminUser
 
 from duo_project.admin_account import admin_account
 from duo_project.health import health_check
+from duo_project.views import api_status_dashboard, api_metrics
 
 
 class StaffSchemaView(SpectacularAPIView):
@@ -25,6 +26,8 @@ class StaffRedocView(SpectacularRedocView):
 
 
 urlpatterns = [
+    path("", api_status_dashboard, name="api-root"),
+    path("metrics/", api_metrics, name="api-metrics"),
     path("health/", health_check, name="health"),
     path("admin/account/", admin_account, name="admin-account"),
     path("admin/", admin.site.urls),
@@ -43,6 +46,7 @@ urlpatterns = [
     path("api/activity/", include("activity.urls")),
     path("api/app/", include("update.urls")),
     path("api/security/", include("security.urls")),
+    path("api/support/", include("support.urls")),
     path("api/analytics/", include("analytics.urls")),
     path("api/portal/", include("admin_portal.urls")),
     # Internal service-to-service API for chat-service (DuoBackend/chat-service).

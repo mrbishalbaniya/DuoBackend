@@ -49,6 +49,9 @@ class UserDeviceSerializer(serializers.ModelSerializer):
     is_current = serializers.SerializerMethodField()
     is_trusted_active = serializers.BooleanField(read_only=True)
     platform_label = serializers.CharField(source="get_platform_display", read_only=True)
+    # Declared explicitly: DRF 3.14's auto-generated IPAddressField is incompatible
+    # with Django 5.2's ip_address_validators() signature and raises a ValueError.
+    ip_address = serializers.CharField(read_only=True, allow_null=True)
 
     class Meta:
         model = UserDevice
@@ -95,6 +98,8 @@ class UserSessionSerializer(serializers.ModelSerializer):
 
 
 class LoginHistorySerializer(serializers.ModelSerializer):
+    ip_address = serializers.CharField(read_only=True, allow_null=True)
+
     class Meta:
         model = LoginHistory
         fields = [
@@ -115,6 +120,8 @@ class LoginHistorySerializer(serializers.ModelSerializer):
 
 
 class SecurityEventSerializer(serializers.ModelSerializer):
+    ip_address = serializers.CharField(read_only=True, allow_null=True)
+
     class Meta:
         model = SecurityEvent
         fields = [

@@ -52,6 +52,11 @@ class DuoTokenObtainPairSerializer(TokenObtainPairSerializer):
             "refresh": str(refresh),
             "access": str(refresh.access_token),
         }
+        
+        # Include user data in the login response to avoid extra /me request
+        from .serializers import UserSerializer
+        data["user"] = UserSerializer(user).data
+        
         if request is not None:
             try:
                 security_service.record_login(

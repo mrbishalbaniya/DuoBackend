@@ -1,0 +1,292 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_name }}</title>
+    <link rel="stylesheet" href="{% static 'admin/css/base.css' %}">
+    <link rel="stylesheet" href="{% static 'admin/css/dashboard.css' %}">
+    <style>
+        body {
+            background: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        .status-container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #e84a7a 0%, #d4a574 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+        .header p {
+            margin: 0;
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .status-card {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            border-left: 4px solid #e84a7a;
+        }
+        .status-card h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+        .status-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        .status-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-online {
+            background: #28a745;
+            box-shadow: 0 0 8px rgba(40, 167, 69, 0.4);
+        }
+        .status-offline {
+            background: #dc3545;
+        }
+        .links-section {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            margin-bottom: 30px;
+        }
+        .links-section h2 {
+            margin: 0 0 20px 0;
+            color: #333;
+            font-size: 1.3rem;
+        }
+        .link-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        .link-card {
+            display: block;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            text-decoration: none;
+            color: #2c3e50;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+        .link-card:hover {
+            background: #e9ecef;
+            border-color: #e84a7a;
+            transform: translateY(-2px);
+        }
+        .link-card-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            display: block;
+        }
+        .link-card-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 5px;
+        }
+        .link-card-desc {
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+        .endpoints-section {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        .endpoints-section h2 {
+            margin: 0 0 20px 0;
+            color: #333;
+            font-size: 1.3rem;
+        }
+        .endpoint-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .endpoint-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9rem;
+            color: #495057;
+        }
+        .endpoint-item:last-child {
+            border-bottom: none;
+        }
+        .endpoint-item:hover {
+            background: #f8f9fa;
+        }
+        .endpoint-method {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #e84a7a;
+            color: white;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="status-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>{{ app_name }}</h1>
+            <p>Backend API Server • {{ environment }} Environment</p>
+        </div>
+
+        <!-- Status Cards -->
+        <div class="status-grid">
+            <div class="status-card">
+                <h3>Server Status</h3>
+                <div class="status-value">
+                    <span class="status-indicator status-online"></span>
+                    Online
+                </div>
+                <div class="status-label">Version {{ version }}</div>
+            </div>
+
+            <div class="status-card">
+                <h3>Database</h3>
+                <div class="status-value">
+                    <span class="status-indicator {% if db_status == 'connected' %}status-online{% else %}status-offline{% endif %}"></span>
+                    {{ db_status|title }}
+                </div>
+                <div class="status-label">PostgreSQL</div>
+            </div>
+
+            <div class="status-card">
+                <h3>Cache</h3>
+                <div class="status-value">
+                    <span class="status-indicator {% if redis_status == 'connected' %}status-online{% else %}status-offline{% endif %}"></span>
+                    {{ redis_status|title }}
+                </div>
+                <div class="status-label">Redis</div>
+            </div>
+
+            <div class="status-card">
+                <h3>Current Time</h3>
+                <div class="status-value">{{ current_time|date:"H:i" }}</div>
+                <div class="status-label">{{ current_time|date:"F d, Y" }}</div>
+            </div>
+        </div>
+
+        <!-- Quick Links -->
+        <div class="links-section">
+            <h2>Quick Access</h2>
+            <div class="link-grid">
+                <a href="/admin/" class="link-card">
+                    <span class="link-card-icon">🛡️</span>
+                    <div class="link-card-title">Django Admin</div>
+                    <div class="link-card-desc">Manage users, content, and settings</div>
+                </a>
+
+                <a href="{{ frontend_url }}" class="link-card" target="_blank">
+                    <span class="link-card-icon">🌐</span>
+                    <div class="link-card-title">Frontend App</div>
+                    <div class="link-card-desc">Visit the Duo web application</div>
+                </a>
+
+                <a href="/api/auth/" class="link-card">
+                    <span class="link-card-icon">🔐</span>
+                    <div class="link-card-title">Authentication</div>
+                    <div class="link-card-desc">Login, register, and auth endpoints</div>
+                </a>
+
+                <a href="https://github.com/yourusername/duo" class="link-card" target="_blank">
+                    <span class="link-card-icon">📚</span>
+                    <div class="link-card-title">Documentation</div>
+                    <div class="link-card-desc">API docs and developer guides</div>
+                </a>
+            </div>
+        </div>
+
+        <!-- API Endpoints -->
+        <div class="endpoints-section">
+            <h2>Available API Endpoints</h2>
+            <ul class="endpoint-list">
+                <li class="endpoint-item">
+                    <span class="endpoint-method">POST</span>
+                    /api/auth/login/
+                </li>
+                <li class="endpoint-item">
+                    <span class="endpoint-method">POST</span>
+                    /api/auth/register/
+                </li>
+                <li class="endpoint-item">
+                    <span class="endpoint-method">GET</span>
+                    /api/auth/me/
+                </li>
+                <li class="endpoint-item">
+                    <span class="endpoint-method">GET</span>
+                    /api/profiles/
+                </li>
+                <li class="endpoint-item">
+                    <span class="endpoint-method">GET</span>
+                    /api/matches/
+                </li>
+                <li class="endpoint-item">
+                    <span class="endpoint-method">POST</span>
+                    /api/matches/swipe/
+                </li>
+                <li class="endpoint-item">
+                    <span class="endpoint-method">GET</span>
+                    /api/chat/conversations/
+                </li>
+                <li class="endpoint-item">
+                    <span class="endpoint-method">POST</span>
+                    /api/chat/messages/
+                </li>
+                <li class="endpoint-item">
+                    <span class="endpoint-method">GET</span>
+                    /api/notifications/
+                </li>
+                <li class="endpoint-item">
+                    <span class="endpoint-method">GET</span>
+                    /api/analytics/dashboard/
+                </li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

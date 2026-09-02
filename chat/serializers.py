@@ -1,9 +1,29 @@
 from django.utils import timezone
 from rest_framework import serializers
-from .models import Conversation, Message
+from .models import Conversation, Message, UserBlock
 from .services import build_reactions_summary
 from accounts.models import Profile
 from accounts.serializers import ProfileSerializer
+
+
+class BlockedUserSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(source="blocked.id")
+    username = serializers.CharField(source="blocked.username")
+    full_name = serializers.SerializerMethodField()
+    photo_url = serializers.SerializerMethodField()
+    blocked_at = serializers.DateTimeField(source="created_at")
+
+    class Meta:
+        model = UserBlock
+        fields = ["id", "username", "full_name", "photo_url", "blocked_at"]
+
+    def get_full_name(self, obj) -> str:
+        profile = getattr(obj.blocked, "profile", None)
+        return getattr(profile, "full_name", "") or obj.blocked.username
+
+    def get_photo_url(self, obj) -> str:
+        profile = getattr(obj.blocked, "profile", None)
+        return getattr(profile, "photo_url", "") or ""
 
 
 class ReplyPreviewSerializer(serializers.Serializer):

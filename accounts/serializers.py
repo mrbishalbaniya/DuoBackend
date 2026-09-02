@@ -64,6 +64,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             "live_location_updated_at",
             "is_verified",
             "is_onboarded",
+            "app_language",
+            "app_region",
             "profile_completeness",
             "is_premium",
             "subscription_expires_at",
@@ -240,6 +242,11 @@ class PasswordResetSerializer(serializers.Serializer):
 class PasswordChangeSerializer(serializers.Serializer):
     current_password = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True, validators=[validate_password])
+
+
+class DeleteAccountSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    reason = serializers.CharField(required=False, allow_blank=True, max_length=500)
 
 
 class RegisterSerializer(serializers.ModelSerializer):

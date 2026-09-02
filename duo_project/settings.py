@@ -108,6 +108,7 @@ INSTALLED_APPS = [
     "activity",
     "update",
     "security",
+    "support",
     "analytics",
     "admin_portal",
     "ai_profile",
@@ -633,6 +634,9 @@ GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS = [
     if uri.strip()
 ]
 
+if DEBUG:
+    (BASE_DIR / "logs").mkdir(exist_ok=True)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -647,39 +651,52 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
+        **(
+            {
+                "debug_file": {
+                    "class": "logging.handlers.RotatingFileHandler",
+                    "filename": str(BASE_DIR / "logs" / "debug.log"),
+                    "maxBytes": 10 * 1024 * 1024,
+                    "backupCount": 3,
+                    "formatter": "verbose",
+                },
+            }
+            if DEBUG
+            else {}
+        ),
     },
     "root": {
-        "handlers": ["console"],
+        "handlers": ["console", "debug_file"] if DEBUG else ["console"],
         "level": "INFO" if not DEBUG else "DEBUG",
     },
     "loggers": {
         "django.request": {
-            "handlers": ["console"],
+            "handlers": ["console", "debug_file"] if DEBUG else ["console"],
             "level": "WARNING",
             "propagate": False,
         },
         "update": {
-            "handlers": ["console"],
+            "handlers": ["console", "debug_file"] if DEBUG else ["console"],
             "level": "DEBUG" if DEBUG else "INFO",
             "propagate": False,
         },
         "duo.media": {
-            "handlers": ["console"],
+            "handlers": ["console", "debug_file"] if DEBUG else ["console"],
             "level": "DEBUG" if DEBUG else "INFO",
             "propagate": False,
         },
         "duo.cloudinary": {
-            "handlers": ["console"],
+            "handlers": ["console", "debug_file"] if DEBUG else ["console"],
             "level": "DEBUG" if DEBUG else "INFO",
             "propagate": False,
         },
         "duo.notifications": {
-            "handlers": ["console"],
+            "handlers": ["console", "debug_file"] if DEBUG else ["console"],
             "level": "DEBUG" if DEBUG else "INFO",
             "propagate": False,
         },
         "duo.security": {
-            "handlers": ["console"],
+            "handlers": ["console", "debug_file"] if DEBUG else ["console"],
             "level": "INFO",
             "propagate": False,
         },

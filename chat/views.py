@@ -32,6 +32,7 @@ from .realtime import (
     broadcast_typing_status,
 )
 from .serializers import (
+    BlockedUserSerializer,
     ConversationSerializer,
     MessageSerializer,
     SecurityEventSerializer,
@@ -649,6 +650,34 @@ class ConversationUnmatchBlockView(APIView):
         _delete_match_and_invalidate(convo, request.user, other_user)
 
         return Response({"detail": "Unmatched and blocked successfully."})
+
+
+class BlockedUsersListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Chat"], summary="List users I have blocked")
+    def get(self, request):
+        blocks = (
+            UserBlock.objects.filter(blocker=request.user)
+            .select_related("blocked", "blocked__profile")
+            .order_by("-created_at")
+        )
+        return Response({"blocked_users": BlockedUserSerializer(blocks, many=True).data})
+
+
+class UnblockUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Chat"], summary="Unblock a user")
+    def post(self, request, user_id):
+        deleted, _ = UserBlock.objects.filter(
+            blocker=request.user, blocked_id=user_id
+        ).delete()
+        if not deleted:
+            return Response({"detail": "Block not found."}, status=status.HTTP_404_NOT_FOUND)
+        invalidate_user_caches(request.user.id, reason="unblock")
+        invalidate_user_caches(user_id, reason="unblock")
+        return Response({"detail": "User unblocked."})
 
 
 class ConversationReportView(APIView):
