@@ -22,6 +22,10 @@ class FaceDetectionResult:
 
 
 def detect_faces(rgb: np.ndarray) -> FaceDetectionResult:
+    insightface_result = _detect_with_insightface(rgb)
+    if insightface_result is not None:
+        return insightface_result
+
     boxes = _detect_with_dnn(rgb)
     if boxes is None:
         boxes = _detect_with_haar(rgb)
@@ -29,6 +33,43 @@ def detect_faces(rgb: np.ndarray) -> FaceDetectionResult:
     count = len(boxes)
     centered = _is_face_centered(rgb.shape[1], rgb.shape[0], boxes)
     embedding = _face_embedding_from_boxes(rgb, boxes)
+
+    return FaceDetectionResult(
+        face_detected=count > 0,
+        face_count=count,
+        face_centered=centered,
+        face_boxes=boxes,
+        embedding=embedding,
+    )
+
+
+def _detect_with_insightface(rgb: np.ndarray) -> FaceDetectionResult | None:
+    """Prefer InsightFace's RetinaFace detector + ArcFace embeddings when the
+    model is available — far more accurate than the Haar-cascade/color-
+    histogram fallback below for face count, centering, and (via the
+    embedding) duplicate-photo detection. Imported locally to avoid a
+    circular import with insightface_engine, which imports detect_faces
+    from this module as its own last-resort fallback.
+    """
+    from photo_verification.ml.insightface_engine import _get_insightface_app
+
+    app = _get_insightface_app()
+    if app is None:
+        return None
+
+    faces = app.get(rgb)
+    boxes = [tuple(int(v) for v in f.bbox) for f in faces]
+    count = len(boxes)
+    centered = _is_face_centered(rgb.shape[1], rgb.shape[0], boxes)
+
+    embedding: list[float] = []
+    if faces:
+        primary = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+        vec = np.asarray(primary.embedding, dtype=np.float32)
+        norm = np.linalg.norm(vec)
+        if norm > 0:
+            vec = vec / norm
+        embedding = vec.tolist()
 
     return FaceDetectionResult(
         face_detected=count > 0,

@@ -25,10 +25,6 @@ class IntegrationSettings:
     email_use_ssl: bool
     email_host_user: str
     email_host_password: str
-    email_delivery: str
-    nodemailer_relay_url: str
-    email_relay_secret: str
-    resend_api_key: str
     default_from_email: str
     email_from_name: str
     email_brand_logo_url: str
@@ -184,21 +180,6 @@ def get_integration_settings() -> IntegrationSettings:
         email_host_password=decrypt_secret(
             _pick_str(db("email_host_password"), settings.EMAIL_HOST_PASSWORD)
         ).replace(" ", ""),
-        email_delivery=_pick_str(
-            db("email_delivery"),
-            getattr(settings, "EMAIL_DELIVERY", "nodemailer"),
-            "nodemailer",
-        ),
-        nodemailer_relay_url=_pick_str(
-            db("nodemailer_relay_url"),
-            getattr(settings, "NODEMAILER_RELAY_URL", ""),
-        ),
-        email_relay_secret=decrypt_secret(
-            _pick_str(db("email_relay_secret"), getattr(settings, "EMAIL_RELAY_SECRET", ""))
-        ),
-        resend_api_key=decrypt_secret(
-            _pick_str(db("resend_api_key"), getattr(settings, "RESEND_API_KEY", ""))
-        ),
         default_from_email=default_from,
         email_from_name=_pick_str(
             db("email_from_name"),

@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-from .constants import PhotoStatus, VerificationStatus
+from .constants import ModerationStatus, PhotoStatus, RejectionCategory, VerificationStatus
 
 
 class PhotoAnalysis(models.Model):
@@ -55,6 +55,69 @@ class PhotoAnalysis(models.Model):
 
     def __str__(self) -> str:
         return f"PhotoAnalysis #{self.pk} user={self.user_id} {self.status}"
+
+
+class ProfilePhoto(models.Model):
+    """The real per-photo record: identity, order, and — critically — the
+    moderation status that gates whether a photo may ever be shown to other
+    users. `Profile.photo_url`/`photo_urls` (accounts app) may only ever be
+    set to URLs backed by an APPROVED row here (enforced in
+    accounts.ProfileSerializer.validate); every discovery/matching/chat
+    surface already reads those fields unconditionally, so this is the single
+    enforcement point that makes them safe.
+    """
+
+    class Meta:
+        ordering = ["order", "uploaded_at"]
+        indexes = [
+            models.Index(fields=["user", "status"]),
+            models.Index(fields=["user", "order"]),
+            models.Index(fields=["url"]),
+        ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="profile_photos",
+    )
+    url = models.URLField(max_length=1000)
+    status = models.CharField(
+        max_length=16,
+        choices=[(s.value, s.value) for s in ModerationStatus],
+        default=ModerationStatus.PENDING,
+    )
+    rejection_reason = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="User-facing, friendly reason only — never a raw category or score.",
+    )
+    rejection_category = models.CharField(
+        max_length=32,
+        choices=[(c.value, c.value) for c in RejectionCategory],
+        blank=True,
+        help_text="Internal-only classification. Never exposed via the API.",
+    )
+    moderation_source = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text='e.g. "nudenet+clip+quality_pipeline" or "manual:<username>".',
+    )
+    moderated_at = models.DateTimeField(null=True, blank=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    order = models.PositiveSmallIntegerField(default=0)
+    is_primary = models.BooleanField(default=False)
+
+    photo_analysis = models.ForeignKey(
+        PhotoAnalysis,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="profile_photos",
+        help_text="Quality/face/duplicate signals for this upload (reused, not duplicated).",
+    )
+
+    def __str__(self) -> str:
+        return f"ProfilePhoto #{self.pk} user={self.user_id} {self.status}"
 
 
 class FaceEmbedding(models.Model):

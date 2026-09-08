@@ -11,16 +11,12 @@ from duo_project.runtime_config import get_integration_settings
 
 @dataclass(frozen=True)
 class EmailConfig:
-    delivery: str
     host: str
     port: int
     use_tls: bool
     use_ssl: bool
     username: str
     password: str
-    nodemailer_relay_url: str
-    email_relay_secret: str
-    resend_api_key: str
     from_email: str
     from_name: str
     brand_logo_url: str
@@ -33,16 +29,12 @@ class EmailConfig:
 def get_email_config() -> EmailConfig:
     cfg = get_integration_settings()
     return EmailConfig(
-        delivery=(cfg.email_delivery or "nodemailer").lower(),
         host=cfg.email_host or "",
         port=int(cfg.email_port or 587),
         use_tls=cfg.email_use_tls,
         use_ssl=cfg.email_use_ssl,
         username=cfg.email_host_user or "",
         password=cfg.email_host_password or "",
-        nodemailer_relay_url=cfg.nodemailer_relay_url or "",
-        email_relay_secret=cfg.email_relay_secret or "",
-        resend_api_key=cfg.resend_api_key or "",
         from_email=cfg.default_from_email or "",
         from_name=cfg.email_from_name or "SajiloWork",
         brand_logo_url=cfg.email_brand_logo_url or "",

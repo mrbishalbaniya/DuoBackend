@@ -14,6 +14,9 @@ LOCATION_PRIVACY_FIELDS = (
     "location_visibility_friends",
 )
 
+MIN_PROFILE_PHOTOS = 1
+MAX_PROFILE_PHOTOS = 3
+
 
 class ProfileSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source="user.id", read_only=True)
@@ -159,12 +162,92 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+
+        instance = getattr(self, "instance", None)
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
+
+        # Only enforce the photo minimum when this request actually touches
+        # photo fields — don't block an unrelated edit (e.g. bio) just
+        # because an existing account has fewer than 5 photos already saved.
+        if "photo_url" in attrs or "photo_urls" in attrs:
+            photo_url = attrs.get(
+                "photo_url", getattr(instance, "photo_url", "") if instance else ""
+            )
+            photo_urls = attrs.get(
+                "photo_urls", getattr(instance, "photo_urls", []) if instance else []
+            )
+            total = (1 if photo_url else 0) + len(photo_urls or [])
+            if total < MIN_PROFILE_PHOTOS:
+                raise serializers.ValidationError(
+                    {
+                        "photo_urls": (
+                            f"Upload at least {MIN_PROFILE_PHOTOS} photo"
+                            f"{'' if MIN_PROFILE_PHOTOS == 1 else 's'} to save your "
+                            f"profile ({total} of {MIN_PROFILE_PHOTOS})."
+                        )
+                    }
+                )
+            if total > MAX_PROFILE_PHOTOS:
+                raise serializers.ValidationError(
+                    {
+                        "photo_urls": (
+                            f"You can upload at most {MAX_PROFILE_PHOTOS} photos "
+                            f"({total} of {MAX_PROFILE_PHOTOS})."
+                        )
+                    }
+                )
+
+            # The core safety gate: a URL may only be added to the profile if
+            # it's backed by an APPROVED ProfilePhoto row for this user. URLs
+            # already on the profile before this request are grandfathered
+            # through untouched (existing users aren't broken by unrelated
+            # edits). Every discovery/matching/chat surface already reads
+            # Profile.photo_url/photo_urls unconditionally — this is what
+            # makes that safe without needing to change any of them.
+            if user is not None and getattr(user, "is_authenticated", False):
+                existing_urls = set()
+                if instance is not None:
+                    if getattr(instance, "photo_url", ""):
+                        existing_urls.add(instance.photo_url)
+                    existing_urls.update(getattr(instance, "photo_urls", None) or [])
+
+                new_urls = set(photo_urls or [])
+                if photo_url:
+                    new_urls.add(photo_url)
+                added_urls = new_urls - existing_urls
+
+                if added_urls:
+                    from photo_verification.constants import ModerationStatus
+                    from photo_verification.models import ProfilePhoto
+
+                    approved_urls = set(
+                        ProfilePhoto.objects.filter(
+                            user=user,
+                            status=ModerationStatus.APPROVED,
+                            url__in=added_urls,
+                        ).values_list("url", flat=True)
+                    )
+                    if added_urls - approved_urls:
+                        raise serializers.ValidationError(
+                            {
+                                "photo_urls": (
+                                    "One or more photos haven't finished moderation yet. "
+                                    "Please wait for approval, or remove them and try again."
+                                )
+                            }
+                        )
+
+        # Server-side 18+ enforcement — previously frontend-only
+        # (registrationSchema.ts). Never trust the client for this.
+        age = attrs.get("age")
+        if age is not None and age != "" and int(age) < 18:
+            raise serializers.ValidationError({"age": "You must be at least 18 years old."})
+
         if attrs.get("location_ghost_mode"):
             attrs["live_latitude"] = None
             attrs["live_longitude"] = None
             attrs["live_location_updated_at"] = None
-        request = self.context.get("request")
-        user = getattr(request, "user", None) if request else None
         friend_ids = attrs.get("location_visibility_friends")
         if friend_ids is None or user is None or not getattr(user, "is_authenticated", False):
             return attrs

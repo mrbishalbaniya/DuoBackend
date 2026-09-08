@@ -11,8 +11,27 @@ from photo_verification.constants import DUPLICATE_FLAG_THRESHOLD
 
 @dataclass(frozen=True)
 class DuplicateDetectionResult:
-    duplicate_probability: float
-    matched_analysis_id: int | None
+    """Same-user matches (re-uploading your own photo) are completely
+    normal — retrying after a rejection, re-adding a removed photo, etc. —
+    and must never be penalized. Cross-user matches (someone else's photo
+    already on file) are a real fraud/impersonation signal and are the only
+    ones that should ever be flagged or rejected."""
+
+    same_user_probability: float
+    same_user_matched_id: int | None
+    cross_user_probability: float
+    cross_user_matched_id: int | None
+
+    # Backward-compatible aliases for any other callers reading the old
+    # single-probability shape — always reflect the cross-user (safety-
+    # relevant) signal, never the harmless same-user one.
+    @property
+    def duplicate_probability(self) -> float:
+        return self.cross_user_probability
+
+    @property
+    def matched_analysis_id(self) -> int | None:
+        return self.cross_user_matched_id
 
 
 def hash_similarity(bits_a: np.ndarray, bits_b: np.ndarray) -> float:
@@ -46,8 +65,8 @@ def detect_duplicate(
     if exclude_id:
         qs = qs.exclude(pk=exclude_id)
 
-    best_prob = 0.0
-    best_id: int | None = None
+    same_user_prob = 0.0
+    same_user_id: int | None = None
 
     for record in qs.only("id", "embedding", "image_hash")[:50]:
         if not record.image_hash:
@@ -57,13 +76,17 @@ def detect_duplicate(
             hash_sim = hash_similarity(hash_bits, stored_bits)
             emb_sim = embedding_similarity(face_embedding, record.embedding or [])
             combined = 0.7 * hash_sim + 0.3 * emb_sim if emb_sim > 0 else hash_sim
-            if combined > best_prob:
-                best_prob = combined
-                best_id = record.id
+            if combined > same_user_prob:
+                same_user_prob = combined
+                same_user_id = record.id
         except (ValueError, TypeError):
             continue
 
-    # Cross-user duplicate scan (limited sample for performance)
+    # Cross-user duplicate scan (limited sample for performance) — this is
+    # the actual fraud/impersonation signal: someone else's photo already
+    # on file for a different account.
+    cross_user_prob = 0.0
+    cross_user_id: int | None = None
     global_qs = (
         PhotoAnalysis.objects.exclude(user_id=user_id)
         .exclude(image_hash="")
@@ -73,15 +96,17 @@ def detect_duplicate(
         try:
             stored_bits = _hex_to_bits(record.image_hash, hash_bits.size)
             hash_sim = hash_similarity(hash_bits, stored_bits)
-            if hash_sim > best_prob:
-                best_prob = hash_sim
-                best_id = record.id
+            if hash_sim > cross_user_prob:
+                cross_user_prob = hash_sim
+                cross_user_id = record.id
         except ValueError:
             continue
 
     return DuplicateDetectionResult(
-        duplicate_probability=best_prob,
-        matched_analysis_id=best_id if best_prob >= DUPLICATE_FLAG_THRESHOLD else None,
+        same_user_probability=same_user_prob,
+        same_user_matched_id=same_user_id if same_user_prob >= DUPLICATE_FLAG_THRESHOLD else None,
+        cross_user_probability=cross_user_prob,
+        cross_user_matched_id=cross_user_id if cross_user_prob >= DUPLICATE_FLAG_THRESHOLD else None,
     )
 
 

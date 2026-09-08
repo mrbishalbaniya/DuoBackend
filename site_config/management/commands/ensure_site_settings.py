@@ -16,36 +16,14 @@ class Command(BaseCommand):
         updated: list[str] = []
 
         env_host = getattr(settings, "EMAIL_HOST", "") or ""
-        env_delivery = getattr(settings, "EMAIL_DELIVERY", "") or ""
         env_user = getattr(settings, "EMAIL_HOST_USER", "") or ""
         env_password = getattr(settings, "EMAIL_HOST_PASSWORD", "") or ""
-        env_relay_secret = getattr(settings, "EMAIL_RELAY_SECRET", "") or ""
-        env_relay_url = getattr(settings, "NODEMAILER_RELAY_URL", "") or ""
         env_from = getattr(settings, "DEFAULT_FROM_EMAIL", "") or ""
         env_from_name = getattr(settings, "EMAIL_FROM_NAME", "") or ""
 
-        if (not obj.email_host or obj.email_host == "smtp.gmail.com") and env_host:
+        if (not obj.email_host or obj.email_host == "smtp-relay.brevo.com") and env_host:
             obj.email_host = env_host
             updated.append("email_host")
-        elif obj.email_host == "smtp-relay.brevo.com":
-            obj.email_host = env_host or ""
-            updated.append("email_host")
-
-        if env_delivery and (
-            not obj.email_delivery
-            or obj.email_delivery in ("resend", "brevo")
-            and not decrypt_secret(obj.resend_api_key or "").strip()
-        ):
-            normalized_delivery = "nodemailer" if env_delivery == "brevo" else env_delivery
-            if normalized_delivery != obj.email_delivery:
-                obj.email_delivery = normalized_delivery
-                updated.append("email_delivery")
-        elif obj.email_delivery in ("resend", "brevo") and not decrypt_secret(
-            obj.resend_api_key or ""
-        ).strip():
-            if obj.email_host_user and obj.email_host_password:
-                obj.email_delivery = "nodemailer"
-                updated.append("email_delivery")
 
         if env_user and not obj.email_host_user:
             obj.email_host_user = env_user
@@ -54,14 +32,6 @@ class Command(BaseCommand):
         if env_password and not obj.email_host_password and not is_placeholder(env_password):
             obj.email_host_password = encrypt_secret(env_password.replace(" ", ""))
             updated.append("email_host_password")
-
-        if env_relay_url and not obj.nodemailer_relay_url:
-            obj.nodemailer_relay_url = env_relay_url.strip()
-            updated.append("nodemailer_relay_url")
-
-        if env_relay_secret and not obj.email_relay_secret and not is_placeholder(env_relay_secret):
-            obj.email_relay_secret = encrypt_secret(env_relay_secret.strip())
-            updated.append("email_relay_secret")
 
         if env_from and not obj.default_from_email:
             obj.default_from_email = env_from
@@ -176,6 +146,5 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("Integration settings already up to date."))
 
         self.stdout.write(
-            f"Edit at /admin/site_config/sitesettings/{obj.pk}/change/ "
-            f"(delivery={obj.email_delivery}, host={obj.email_host})"
+            f"Edit at /admin/site_config/sitesettings/{obj.pk}/change/ (host={obj.email_host})"
         )

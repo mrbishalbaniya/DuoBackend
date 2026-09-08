@@ -84,6 +84,7 @@ class VerificationEngine:
             "brightness_score": quality.brightness_score,
             "resolution_passed": quality.resolution_passed,
             "embedding": embedding.embedding,
+            "embedding_detector": embedding.detector,
             "fraud_probability": fraud.fraud_probability,
         }
 
@@ -136,6 +137,7 @@ class VerificationEngine:
             liveness_score=liveness_score,
             fraud_probability=fraud_probability,
             rejection_reasons=rejection_reasons,
+            embedding_detector=analysis["embedding_detector"],
         )
         session.rejection_reasons = reasons
         session.verification_status = status.value
@@ -166,6 +168,7 @@ class VerificationEngine:
         liveness_score: float,
         fraud_probability: float,
         rejection_reasons: list[str],
+        embedding_detector: str,
     ) -> tuple[VerificationStatus, list[str]]:
         reasons = list(rejection_reasons)
 
@@ -193,6 +196,17 @@ class VerificationEngine:
         if liveness_score < LIVENESS_PASS_THRESHOLD:
             return VerificationStatus.UNDER_REVIEW, [
                 f"Liveness score borderline ({liveness_score:.0%})."
+            ]
+
+        if embedding_detector != "insightface":
+            # No real biometric model available for this selfie — the embedding
+            # is a crude color-histogram proxy (see insightface_engine.py), not
+            # a facial identity signature. It can screen out obvious mismatches
+            # but is too weak to trust for an automatic VERIFIED badge, so route
+            # to manual review instead of silently approving on a low-fidelity
+            # signal.
+            return VerificationStatus.UNDER_REVIEW, [
+                "Manual review required to confirm your match."
             ]
 
         return VerificationStatus.VERIFIED, []

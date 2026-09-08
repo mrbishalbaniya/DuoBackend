@@ -8,9 +8,6 @@ import ssl
 from abc import ABC, abstractmethod
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any
-
-import requests
 
 from email_service.config import EmailConfig, format_from_address
 
@@ -86,140 +83,8 @@ class SmtpProvider(BaseProvider):
             return DeliveryResult(False, self.name, error=str(exc))
 
 
-class NodemailerRelayProvider(BaseProvider):
-    """Send email via the Duo frontend Nodemailer relay (HTTPS)."""
-
-    name = "nodemailer"
-
-    def send(
-        self,
-        config: EmailConfig,
-        *,
-        to: list[str],
-        subject: str,
-        text_body: str,
-        html_body: str,
-    ) -> DeliveryResult:
-        from django.conf import settings
-
-        relay_url = (config.nodemailer_relay_url or "").strip()
-        if not relay_url:
-            frontend = getattr(settings, "FRONTEND_URL", "").strip().rstrip("/")
-            if frontend:
-                relay_url = f"{frontend}/api/internal/email"
-        secret = (config.email_relay_secret or getattr(settings, "EMAIL_RELAY_SECRET", "") or "").strip()
-        if not relay_url:
-            return DeliveryResult(False, self.name, error="Nodemailer relay URL is not configured")
-        if not secret:
-            return DeliveryResult(
-                False,
-                self.name,
-                error="EMAIL_RELAY_SECRET is not configured on backend or in Integration settings.",
-            )
-
-        from_addr = format_from_address(config)
-        if not from_addr:
-            return DeliveryResult(False, self.name, error="DEFAULT_FROM_EMAIL is not configured")
-
-        payload: dict[str, Any] = {
-            "smtp": {
-                "host": config.host,
-                "port": config.port,
-                "secure": config.use_ssl,
-                "requireTLS": config.use_tls and not config.use_ssl,
-                "auth": {
-                    "user": config.username,
-                    "pass": config.password,
-                },
-            },
-            "from": from_addr,
-            "to": to,
-            "subject": subject,
-            "text": text_body,
-            "html": html_body or "",
-        }
-
-        try:
-            response = requests.post(
-                relay_url,
-                headers={
-                    "Authorization": f"Bearer {secret}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-                json=payload,
-                timeout=config.smtp_timeout,
-            )
-            if response.status_code in (200, 201):
-                data = response.json() if response.content else {}
-                return DeliveryResult(True, self.name, message_id=str(data.get("messageId", "")))
-            return DeliveryResult(
-                False,
-                self.name,
-                error=f"Nodemailer relay {response.status_code}: {response.text[:500]}",
-            )
-        except Exception as exc:
-            logger.exception("Nodemailer relay delivery failed")
-            return DeliveryResult(False, self.name, error=str(exc))
-
-
-class ResendApiProvider(BaseProvider):
-    name = "resend_api"
-
-    def send(
-        self,
-        config: EmailConfig,
-        *,
-        to: list[str],
-        subject: str,
-        text_body: str,
-        html_body: str,
-    ) -> DeliveryResult:
-        api_key = (config.resend_api_key or "").strip()
-        if not api_key:
-            return DeliveryResult(False, self.name, error="Resend API key is not configured")
-
-        from_addr = format_from_address(config)
-        if not from_addr:
-            return DeliveryResult(False, self.name, error="DEFAULT_FROM_EMAIL is not configured")
-
-        payload: dict[str, Any] = {
-            "from": from_addr,
-            "to": to,
-            "subject": subject,
-            "text": text_body,
-        }
-        if html_body:
-            payload["html"] = html_body
-
-        try:
-            response = requests.post(
-                "https://api.resend.com/emails",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=config.smtp_timeout,
-            )
-            if response.status_code in (200, 201):
-                data = response.json() if response.content else {}
-                return DeliveryResult(True, self.name, message_id=str(data.get("id", "")))
-            return DeliveryResult(
-                False,
-                self.name,
-                error=f"Resend API {response.status_code}: {response.text[:500]}",
-            )
-        except Exception as exc:
-            logger.exception("Resend API delivery failed")
-            return DeliveryResult(False, self.name, error=str(exc))
-
-
 PROVIDERS: dict[str, BaseProvider] = {
-    "nodemailer": NodemailerRelayProvider(),
     "smtp": SmtpProvider(),
-    "resend": ResendApiProvider(),
-    "resend_api": ResendApiProvider(),
 }
 
 

@@ -30,11 +30,6 @@ def is_valid_brevo_smtp_key(value: str) -> bool:
     return key.startswith("xsmtpsib-") and len(key) > 20 and not is_placeholder(key)
 
 
-def is_valid_resend_api_key(value: str) -> bool:
-    key = (value or "").strip()
-    return key.startswith("re_") and len(key) > 10 and not is_placeholder(key)
-
-
 def smtp_configured(host: str, username: str, password: str) -> bool:
     host_value = (host or "").strip()
     user = (username or "").strip()

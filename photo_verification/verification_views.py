@@ -124,7 +124,7 @@ class VerificationStartView(APIView):
 
 
 class VerificationLivenessView(APIView):
-    """Submit a liveness challenge frame (smile, blink, head_left, head_right)."""
+    """Submit a liveness challenge frame (see LIVENESS_STEPS for the active set)."""
 
     permission_classes = [AllowAny]
     throttle_classes = [VerificationHandoffThrottle]

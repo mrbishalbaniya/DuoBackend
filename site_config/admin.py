@@ -27,8 +27,6 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     readonly_fields = (
         "updated_at",
         "google_client_secret_status",
-        "resend_api_key_status",
-        "email_relay_secret_status",
         "email_host_password_status",
         "esewa_secret_key_status",
         "webrtc_turn_credential_status",
@@ -89,29 +87,11 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Email delivery",
+            "Email (Google SMTP)",
             {
                 "fields": (
-                    "email_delivery",
                     "email_from_name",
                     "default_from_email",
-                    "nodemailer_relay_url",
-                    "email_relay_secret_status",
-                    "email_relay_secret",
-                    "resend_api_key_status",
-                    "resend_api_key",
-                ),
-                "description": (
-                    "Nodemailer sends email via the Duo frontend relay (HTTPS). "
-                    "Configure SMTP credentials below — same options as "
-                    "nodemailer.createTransport({ host, port, secure, auth })."
-                ),
-            },
-        ),
-        (
-            "Nodemailer SMTP",
-            {
-                "fields": (
                     "email_host",
                     "email_port",
                     "email_use_tls",
@@ -121,9 +101,10 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                     "email_host_password",
                 ),
                 "description": (
-                    "SMTP transport settings used by Nodemailer. "
-                    "Port 587 + STARTTLS (email_use_tls) is typical; use port 465 + SSL for secure: true. "
-                    "Use Send test email at the bottom of this tab after saving."
+                    "Sends email via Google SMTP (Gmail / Google Workspace). Host smtp.gmail.com, "
+                    "port 587 with STARTTLS (or port 465 with SSL). Username is your full Gmail address; "
+                    "password must be a 16-character Google App Password (requires 2-Step Verification), "
+                    "not your regular account password. Use Send test email at the bottom of this tab after saving."
                 ),
             },
         ),
@@ -236,14 +217,6 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     @admin.display(description="Google client secret")
     def google_client_secret_status(self, obj):
         return _secret_status_html(obj.google_client_secret)
-
-    @admin.display(description="Resend API key")
-    def resend_api_key_status(self, obj):
-        return _secret_status_html(obj.resend_api_key)
-
-    @admin.display(description="Email relay secret")
-    def email_relay_secret_status(self, obj):
-        return _secret_status_html(obj.email_relay_secret)
 
     @admin.display(description="SMTP password")
     def email_host_password_status(self, obj):

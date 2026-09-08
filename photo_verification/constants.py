@@ -9,6 +9,31 @@ class PhotoStatus(str, Enum):
     REJECTED = "REJECTED"
 
 
+class ModerationStatus(str, Enum):
+    """Workflow status of a ProfilePhoto — distinct from PhotoStatus (quality/
+    authenticity verdict). This is the one and only status that gates whether
+    a photo may ever appear to other users."""
+
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    MANUAL_REVIEW = "MANUAL_REVIEW"
+
+
+class RejectionCategory(str, Enum):
+    """Internal-only classification of why a photo was rejected/flagged.
+    Never sent to the client — only a friendly, generic reason is."""
+
+    NUDITY = "nudity"
+    VIOLENCE = "violence"
+    WEAPON = "weapon"
+    HATE_SYMBOL = "hate_symbol"
+    DRUGS = "drugs"
+    NON_PHOTO_CONTENT = "non_photo_content"  # screenshot/meme/ad/QR/logo
+    QUALITY = "quality"  # existing pipeline: blur/dark/duplicate/no-face/AI-gen
+    OTHER = "other"
+
+
 # Resolution
 MIN_IMAGE_WIDTH = 400
 MIN_IMAGE_HEIGHT = 400
@@ -41,6 +66,26 @@ WEIGHT_GOOD_RESOLUTION = 10
 WEIGHT_CENTERED_FACE = 10
 
 
+# --- Content safety moderation (local, offline — no third-party API) ---
+
+# NudeNet per-class exposure score (0-1) above which we hard-reject.
+# Kept high-confidence-only for genuinely explicit classes so normal
+# swimwear/beach/gym photos are never caught.
+NSFW_EXPLICIT_REJECT_THRESHOLD = 0.55
+# Lower band on the same explicit classes -> uncertain, not auto-rejected.
+NSFW_EXPLICIT_REVIEW_THRESHOLD = 0.35
+# Context-dependent labels (BUTTOCKS_EXPOSED, FEMALE_BREAST_EXPOSED — could be
+# swimwear) stay review-only at low/medium confidence, but a very high score
+# here means unambiguous full nudity (not a beach photo) and should still
+# auto-reject rather than sit in manual review forever.
+NSFW_REVIEW_LABEL_REJECT_THRESHOLD = 0.75
+
+# CLIP zero-shot similarity margin (unsafe-prompt score minus best safe-prompt
+# score) above which we treat a category as detected.
+CLIP_UNSAFE_REJECT_MARGIN = 0.08
+CLIP_UNSAFE_REVIEW_MARGIN = 0.03
+
+
 # --- Selfie verification & face matching ---
 
 class VerificationStatus(str, Enum):
@@ -50,7 +95,7 @@ class VerificationStatus(str, Enum):
     UNDER_REVIEW = "UNDER_REVIEW"
 
 
-LIVENESS_STEPS = ("smile", "blink", "head_left", "head_right")
+LIVENESS_STEPS = ("smile", "blink")
 
 # Cosine similarity thresholds
 SIMILARITY_VERIFIED = 0.80

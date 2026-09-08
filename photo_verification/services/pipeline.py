@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from photo_verification.constants import PhotoStatus
+from photo_verification.constants import ModerationStatus, PhotoStatus, RejectionCategory
 from photo_verification.services.ai_detection import detect_ai_generated
+from photo_verification.services.content_moderation import ContentModerationResult, moderate_content
 from photo_verification.services.duplicate_detection import detect_duplicate
 from photo_verification.services.face_detection import detect_faces
 from photo_verification.services.image_utils import LoadedImage, load_image_from_file
 from photo_verification.services.quality_analysis import analyze_quality
-from photo_verification.services.scoring import ScoringResult, score_and_decide
+from photo_verification.services.scoring import ScoringResult, decide_final_photo_status, score_and_decide
 
 
 @dataclass
@@ -31,6 +32,14 @@ class PhotoVerificationResult:
     rejection_reasons: list[str] = field(default_factory=list)
     image_hash: str = ""
     embedding: list[float] = field(default_factory=list)
+
+    # Final workflow decision — combines the quality/authenticity verdict
+    # above with content-safety moderation (nudity/violence/hate/etc). This,
+    # not `status`, is what ProfilePhoto.status is set from.
+    moderation_status: ModerationStatus = ModerationStatus.PENDING
+    moderation_rejection_reason: str = ""
+    moderation_rejection_category: RejectionCategory = RejectionCategory.OTHER
+    moderation_source: str = ""
 
     def to_analysis_dict(self) -> dict:
         return {
@@ -78,6 +87,8 @@ class PhotoVerificationPipeline:
         scored: ScoringResult = score_and_decide(
             face, quality, ai, duplicate, is_primary=is_primary
         )
+        content: ContentModerationResult = moderate_content(loaded.rgb)
+        final = decide_final_photo_status(scored, content)
 
         return PhotoVerificationResult(
             face_detected=face.face_detected,
@@ -96,4 +107,8 @@ class PhotoVerificationPipeline:
             rejection_reasons=scored.rejection_reasons,
             image_hash=loaded.perceptual_hash,
             embedding=face.embedding,
+            moderation_status=final.status,
+            moderation_rejection_reason=final.rejection_reason,
+            moderation_rejection_category=final.rejection_category,
+            moderation_source=final.moderation_source,
         )

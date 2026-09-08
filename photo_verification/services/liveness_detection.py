@@ -248,6 +248,20 @@ def validate_liveness_step(step: str, rgb: np.ndarray, baseline: dict | None = N
             detail="Face not detected. Center your face with good lighting.",
         )
 
+    if metrics.get("source") != baseline.get("source"):
+        # Baseline and this frame were analyzed by different detection backends
+        # (e.g. mediapipe missed a landmark on an extreme head-turn frame and we
+        # fell back to insightface). Their yaw/mouth/eye metrics use different
+        # formulas and scales, so a delta between them is meaningless — comparing
+        # them would silently produce wrong pass/fail decisions. Ask for a retry
+        # instead of risking a bogus comparison.
+        return LivenessStepResult(
+            step=step,
+            passed=False,
+            score=0.0,
+            detail="Lost tracking for a moment — hold still and try again.",
+        )
+
     if step == "smile":
         mouth = metrics.get("mouth_open")
         base_mouth = baseline.get("mouth_open")

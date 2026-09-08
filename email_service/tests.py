@@ -9,16 +9,12 @@ from email_service.service import _validate_recipients
 class EmailRenderingTests(TestCase):
     def test_render_registration_otp(self):
         config = EmailConfig(
-            delivery="nodemailer",
-            host="smtp.example.com",
+            host="smtp.gmail.com",
             port=587,
             use_tls=True,
             use_ssl=False,
             username="login@example.com",
             password="secret",
-            nodemailer_relay_url="https://example.com/api/internal/email",
-            email_relay_secret="relay-secret",
-            resend_api_key="",
             from_email="noreply@example.com",
             from_name="SajiloWork",
             brand_logo_url="",

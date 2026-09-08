@@ -53,46 +53,13 @@ def _is_retryable(error: str) -> bool:
     lower = error.lower()
     return any(p in lower for p in _RETRYABLE_PATTERNS)
 
-from email_service.credentials import (
-    is_valid_resend_api_key,
-    smtp_configured,
-)
-
-
-def _provider_available(name: str, config: EmailConfig) -> bool:
-    normalized = name.lower()
-    if normalized == "nodemailer":
-        relay_configured = bool((config.nodemailer_relay_url or "").strip()) or bool(
-            getattr(settings, "FRONTEND_URL", "")
-        )
-        secret_configured = bool((config.email_relay_secret or "").strip()) or bool(
-            getattr(settings, "EMAIL_RELAY_SECRET", "")
-        )
-        return relay_configured and secret_configured and smtp_configured(
-            config.host, config.username, config.password
-        )
-    if normalized == "smtp":
-        return smtp_configured(config.host, config.username, config.password)
-    if normalized in ("resend_api", "resend"):
-        return is_valid_resend_api_key(config.resend_api_key)
-    return False
-
-
-def _normalize_provider(name: str) -> str:
-    normalized = (name or "nodemailer").lower()
-    if normalized == "resend":
-        return "resend_api"
-    return normalized
+from email_service.credentials import smtp_configured
 
 
 def _resolve_provider_chain(config: EmailConfig) -> list[str]:
-    primary = _normalize_provider(config.delivery or "nodemailer")
-    candidates = [primary, "nodemailer", "smtp", "resend_api"]
-    chain: list[str] = []
-    for name in candidates:
-        if name not in chain and _provider_available(name, config):
-            chain.append(name)
-    return chain
+    if smtp_configured(config.host, config.username, config.password):
+        return ["smtp"]
+    return []
 
 
 def _get_event_setting(event: str) -> EmailEventSetting | None:
@@ -145,11 +112,8 @@ def _deliver(
     if not chain:
         return DeliveryResult(
             False,
-            config.delivery,
-            error=(
-                "No email provider is configured. Set Nodemailer SMTP credentials and "
-                "EMAIL_RELAY_SECRET in Integration settings."
-            ),
+            "smtp",
+            error="No email provider is configured. Set Google SMTP credentials in Integration settings.",
         )
 
     last_error = DeliveryResult(False, chain[0], error="No provider available")
@@ -279,7 +243,7 @@ def send_email(
                 event=event,
                 recipient=recipient,
                 subject=subject,
-                provider=config.delivery,
+                provider="smtp",
                 status=EmailStatus.QUEUED,
                 attempt_count=0,
             )
@@ -332,7 +296,7 @@ def send_email(
         detail = failed.error_message if failed and failed.error_message else "Unknown error"
         raise RuntimeError(
             f"Email delivery failed: {detail} "
-            "(Admin → Integration settings → Email delivery / Nodemailer SMTP)"
+            "(Admin → Integration settings → Email (Google SMTP))"
         )
     return success
 
@@ -377,12 +341,4 @@ def send_test_email(to: str) -> tuple[bool, str]:
 
 def test_smtp_configuration(config: EmailConfig | None = None) -> tuple[bool, str]:
     cfg = config or get_email_config()
-    if cfg.delivery in ("resend", "resend_api"):
-        if not cfg.resend_api_key:
-            return False, "Resend API key is required for Resend delivery"
-        return True, "Resend API key is configured (use Test Email to verify delivery)"
-    if cfg.delivery == "nodemailer":
-        if not smtp_configured(cfg.host, cfg.username, cfg.password):
-            return False, "SMTP host, username, and password are required for Nodemailer"
-        return True, "Nodemailer SMTP settings saved (use Send test email to verify delivery)"
     return validate_smtp_credentials(cfg)

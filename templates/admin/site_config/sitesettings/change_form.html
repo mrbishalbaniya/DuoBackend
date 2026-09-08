@@ -154,8 +154,6 @@
       var selectors = [
         "input[name=google_client_secret]",
         "input[name=email_host_password]",
-        "input[name=resend_api_key]",
-        "input[name=email_relay_secret]",
         "input[name=webrtc_turn_credential]",
         "input[name=webrtc_turn_secret]",
         "input[name=esewa_secret_key]",
@@ -169,7 +167,7 @@
 
     function mountTestEmailPanel() {
       var panel = document.getElementById("duo-test-email-panel");
-      var tab = document.getElementById("nodemailer-smtp-tab");
+      var tab = document.getElementById("email-google-smtp-tab");
       if (!panel || !tab || panel.dataset.mounted === "1") return;
 
       var host = tab.querySelector(".card-body") || tab;
