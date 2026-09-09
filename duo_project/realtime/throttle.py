@@ -33,11 +33,21 @@ def allow_event(user_id: int, event_type: str) -> bool:
     bucket = int(time.time()) // window
     key = f"ws:throttle:{user_id}:{event_type}:{bucket}"
     try:
-        count = cache.get(key, 0)
-        if count >= max_events:
+        # cache.add is an atomic SETNX (Redis) / lock-guarded set (locmem), so the
+        # first writer in a bucket always wins the initial count=1 — no lost updates
+        # from concurrent connections racing a plain get-then-set.
+        if cache.add(key, 1, window + 1):
+            return True
+        try:
+            count = cache.incr(key)
+        except ValueError:
+            # Key expired between add() and incr() at a bucket boundary — this is
+            # the first event of a new window.
+            cache.add(key, 1, window + 1)
+            return True
+        if count > max_events:
             logger.warning("ws_rate_limited user_id=%s event=%s", user_id, event_type)
             return False
-        cache.set(key, int(count) + 1, window + 1)
         return True
     except Exception:
         if settings.DEBUG:

@@ -1,5 +1,6 @@
 """JWT authentication middleware for Django Channels WebSocket connections."""
 
+import re
 from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
@@ -15,6 +16,17 @@ WS_TICKET_SALT = "duo-ws-ticket"
 CALL_WS_TICKET_SALT = "duo-call-ws-ticket"
 INBOX_WS_TICKET_SALT = "duo-inbox-ws-ticket"
 WS_TICKET_MAX_AGE = 300
+
+# JWTAuthMiddleware wraps URLRouter (see asgi.py), so it runs BEFORE routing —
+# scope["url_route"] is populated by URLRouter itself when it dispatches to the
+# matched consumer, and is never visible to an outer middleware. conversation_id
+# must therefore be parsed straight from the raw path, not from url_route kwargs.
+_CONVERSATION_PATH_RE = re.compile(r"/ws/(?:chat|call)/(?P<conversation_id>[^/?]+)/?")
+
+
+def _conversation_id_from_path(path: str) -> str | None:
+    match = _CONVERSATION_PATH_RE.search(path or "")
+    return match.group("conversation_id") if match else None
 
 
 @database_sync_to_async
@@ -95,14 +107,14 @@ class JWTAuthMiddleware(BaseMiddleware):
             return await super().__call__(scope, receive, send)
 
         scope = dict(scope)
+        path = scope.get("path", "")
         url_route = scope.get("url_route", {})
         kwargs = url_route.get("kwargs", {}) if url_route else {}
-        conversation_id = kwargs.get("conversation_id")
+        conversation_id = kwargs.get("conversation_id") or _conversation_id_from_path(path)
         query_string = scope.get("query_string", b"").decode()
         query = parse_qs(query_string)
 
         user_id = None
-        path = scope.get("path", "")
         ticket_salt = CALL_WS_TICKET_SALT if "/ws/call/" in path else WS_TICKET_SALT
         if query.get("ticket") and "/ws/inbox/" in path:
             user_id = _user_from_inbox_ws_ticket(query["ticket"][0])
