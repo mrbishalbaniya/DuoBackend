@@ -17,14 +17,18 @@ from .services import (
     user_has_active_subscription,
 )
 
-MIN_TOP_UP_AMOUNT = Decimal("100")
+MIN_TOP_UP_AMOUNT = Decimal("50")
 MAX_TOP_UP_AMOUNT = Decimal("500000")
 
 # 1 NPR paid via eSewa credits 1 Duo Coin.
 COIN_PACKS = [
+    {"id": "coins_50", "coins": 50, "price_npr": 50, "label": "50 Coins"},
+    {"id": "coins_100", "coins": 100, "price_npr": 100, "label": "100 Coins"},
+    {"id": "coins_250", "coins": 250, "price_npr": 250, "label": "250 Coins"},
     {"id": "coins_500", "coins": 500, "price_npr": 500, "label": "500 Coins"},
     {"id": "coins_1000", "coins": 1000, "price_npr": 1000, "label": "1,000 Coins"},
     {"id": "coins_2000", "coins": 2000, "price_npr": 2000, "label": "2,000 Coins"},
+    {"id": "coins_3000", "coins": 3000, "price_npr": 3000, "label": "3,000 Coins"},
     {"id": "coins_5000", "coins": 5000, "price_npr": 5000, "label": "5,000 Coins"},
 ]
 TOP_UP_PRESETS = [pack["coins"] for pack in COIN_PACKS]
@@ -52,12 +56,17 @@ def get_wallet_summary(user, *, limit: int = 20) -> dict:
     wallet = get_or_create_wallet(user)
     transactions = list(
         wallet.transactions.order_by("-created_at")[:limit].values(
+            "id",
             "type",
             "amount",
             "balance_after",
+            "total_amount",
+            "status",
+            "payment_method",
             "description",
             "reference_id",
             "created_at",
+            "updated_at",
         )
     )
     return {
@@ -70,6 +79,56 @@ def get_wallet_summary(user, *, limit: int = 20) -> dict:
     }
 
 
+def list_wallet_transactions(
+    user,
+    *,
+    date_from=None,
+    date_to=None,
+    payment_method: str = "",
+    before_id: int | None = None,
+    limit: int = 20,
+) -> dict:
+    wallet = get_or_create_wallet(user)
+    qs = wallet.transactions.order_by("-created_at", "-id")
+
+    if date_from:
+        qs = qs.filter(created_at__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(created_at__date__lte=date_to)
+    if payment_method:
+        qs = qs.filter(payment_method=payment_method)
+    if before_id:
+        qs = qs.filter(id__lt=before_id)
+
+    limit = max(1, min(limit, 100))
+    rows = list(
+        qs[:limit].values(
+            "id",
+            "type",
+            "amount",
+            "balance_after",
+            "total_amount",
+            "status",
+            "payment_method",
+            "description",
+            "reference_id",
+            "created_at",
+            "updated_at",
+        )
+    )
+    has_more = len(rows) == limit
+    return {
+        "results": rows,
+        "has_more": has_more,
+        "next_before": rows[-1]["id"] if has_more and rows else None,
+    }
+
+
+def get_wallet_transaction(user, transaction_id: int) -> WalletTransaction | None:
+    wallet = get_or_create_wallet(user)
+    return wallet.transactions.filter(id=transaction_id).first()
+
+
 def _record_transaction(
     wallet: Wallet,
     *,
@@ -78,12 +137,18 @@ def _record_transaction(
     balance_after: Decimal,
     description: str,
     reference_id: str = "",
+    total_amount: Decimal = Decimal("0"),
+    payment_method: str = "",
+    status: str = WalletTransaction.STATUS_COMPLETE,
 ) -> WalletTransaction:
     return WalletTransaction.objects.create(
         wallet=wallet,
         type=tx_type,
         amount=amount,
         balance_after=balance_after,
+        total_amount=total_amount,
+        payment_method=payment_method,
+        status=status,
         description=description,
         reference_id=reference_id,
     )
@@ -96,6 +161,8 @@ def credit_wallet(
     tx_type: str = WalletTransaction.TYPE_TOP_UP,
     description: str = "",
     reference_id: str = "",
+    total_amount: Decimal | None = None,
+    payment_method: str = WalletTransaction.PAYMENT_METHOD_ESEWA,
 ) -> Wallet:
     if amount <= 0:
         raise ValueError("Credit amount must be positive.")
@@ -114,6 +181,8 @@ def credit_wallet(
             balance_after=wallet.balance,
             description=description,
             reference_id=reference_id,
+            total_amount=total_amount if total_amount is not None else amount,
+            payment_method=payment_method,
         )
     return wallet
 
@@ -125,6 +194,8 @@ def debit_wallet(
     tx_type: str = WalletTransaction.TYPE_PURCHASE,
     description: str = "",
     reference_id: str = "",
+    total_amount: Decimal | None = None,
+    payment_method: str = WalletTransaction.PAYMENT_METHOD_WALLET,
 ) -> Wallet:
     if amount <= 0:
         raise ValueError("Debit amount must be positive.")
@@ -145,6 +216,8 @@ def debit_wallet(
             balance_after=wallet.balance,
             description=description,
             reference_id=reference_id,
+            total_amount=total_amount if total_amount is not None else amount,
+            payment_method=payment_method,
         )
     return wallet
 
@@ -238,6 +311,8 @@ def activate_topup(
             tx_type=WalletTransaction.TYPE_TOP_UP,
             description=f"Purchased {int(locked.total_amount):,} coins via eSewa",
             reference_id=locked.transaction_uuid,
+            total_amount=locked.total_amount,
+            payment_method=WalletTransaction.PAYMENT_METHOD_ESEWA,
         )
 
 

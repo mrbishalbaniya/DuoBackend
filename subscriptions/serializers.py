@@ -65,12 +65,23 @@ class SubscriptionPaymentSerializer(serializers.ModelSerializer):
 
 
 class WalletTransactionSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
     type = serializers.CharField()
     amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     balance_after = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    status = serializers.CharField()
+    payment_method = serializers.CharField()
     description = serializers.CharField()
     reference_id = serializers.CharField()
     created_at = serializers.DateTimeField()
+    updated_at = serializers.DateTimeField()
+
+
+class WalletTransactionListResponseSerializer(serializers.Serializer):
+    results = WalletTransactionSerializer(many=True)
+    has_more = serializers.BooleanField()
+    next_before = serializers.IntegerField(allow_null=True)
 
 
 class CoinPackSerializer(serializers.Serializer):

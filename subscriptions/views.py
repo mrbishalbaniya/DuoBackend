@@ -10,6 +10,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from django.utils.dateparse import parse_date
+
 from .esewa import (
     check_mobile_transaction_by_product,
     check_mobile_transaction_by_ref_id,
@@ -25,6 +27,8 @@ from .serializers import (
     SubscriptionStatusSerializer,
     WalletPurchaseResponseSerializer,
     WalletSerializer,
+    WalletTransactionListResponseSerializer,
+    WalletTransactionSerializer,
 )
 from .services import (
     activate_payment,
@@ -38,6 +42,8 @@ from .wallet_services import (
     activate_topup,
     create_topup_request,
     get_wallet_summary,
+    get_wallet_transaction,
+    list_wallet_transactions,
     purchase_plan_with_wallet,
 )
 from duo_project.cache import api_cache, get_user_cache_version
@@ -140,6 +146,60 @@ class WalletView(APIView):
                 label="wallet_summary",
             )
         )
+
+
+class WalletTransactionListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Wallet"],
+        summary="List wallet transactions with date range and payment method filters",
+        responses={200: WalletTransactionListResponseSerializer},
+    )
+    def get(self, request):
+        date_from_raw = (request.query_params.get("date_from") or "").strip()
+        date_to_raw = (request.query_params.get("date_to") or "").strip()
+        date_from = parse_date(date_from_raw) if date_from_raw else None
+        date_to = parse_date(date_to_raw) if date_to_raw else None
+        payment_method = (request.query_params.get("payment_method") or "").strip()
+
+        before_id = None
+        before_raw = request.query_params.get("before")
+        if before_raw:
+            try:
+                before_id = int(before_raw)
+            except (TypeError, ValueError):
+                before_id = None
+
+        try:
+            limit = int(request.query_params.get("limit", 20))
+        except (TypeError, ValueError):
+            limit = 20
+
+        data = list_wallet_transactions(
+            request.user,
+            date_from=date_from,
+            date_to=date_to,
+            payment_method=payment_method,
+            before_id=before_id,
+            limit=limit,
+        )
+        return Response(data)
+
+
+class WalletTransactionDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Wallet"],
+        summary="Get a single wallet transaction",
+        responses={200: WalletTransactionSerializer},
+    )
+    def get(self, request, transaction_id):
+        txn = get_wallet_transaction(request.user, transaction_id)
+        if not txn:
+            return Response({"detail": "Transaction not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(WalletTransactionSerializer(txn).data)
 
 
 class WalletTopUpInitiateView(APIView):

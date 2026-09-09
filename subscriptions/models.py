@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -97,6 +99,24 @@ class WalletTransaction(models.Model):
         (TYPE_ADJUSTMENT, "Adjustment"),
     ]
 
+    STATUS_COMPLETE = "complete"
+    STATUS_PENDING = "pending"
+    STATUS_FAILED = "failed"
+
+    STATUS_CHOICES = [
+        (STATUS_COMPLETE, "Complete"),
+        (STATUS_PENDING, "Pending"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    PAYMENT_METHOD_ESEWA = "esewa"
+    PAYMENT_METHOD_WALLET = "wallet"
+
+    PAYMENT_METHOD_CHOICES = [
+        (PAYMENT_METHOD_ESEWA, "eSewa"),
+        (PAYMENT_METHOD_WALLET, "Wallet balance"),
+    ]
+
     wallet = models.ForeignKey(
         Wallet,
         on_delete=models.CASCADE,
@@ -105,9 +125,15 @@ class WalletTransaction(models.Model):
     type = models.CharField(max_length=16, choices=TYPE_CHOICES)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     balance_after = models.DecimalField(max_digits=12, decimal_places=2)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_COMPLETE)
+    payment_method = models.CharField(
+        max_length=16, choices=PAYMENT_METHOD_CHOICES, blank=True, default=""
+    )
     description = models.CharField(max_length=255, blank=True, default="")
     reference_id = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]

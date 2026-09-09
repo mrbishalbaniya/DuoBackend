@@ -145,7 +145,9 @@ class WalletAdmin(admin.ModelAdmin):
             credit_wallet(
                 wallet.user,
                 Decimal("500"),
+                tx_type=WalletTransaction.TYPE_ADJUSTMENT,
                 description="Admin test credit",
+                payment_method="",
             )
         self.message_user(request, f"Credited {queryset.count()} wallet(s).", messages.SUCCESS)
 
