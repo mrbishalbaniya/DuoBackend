@@ -9,7 +9,7 @@ from django.utils import timezone
 from duo_project.runtime_config import get_integration_settings
 
 from .esewa import _format_amount, generate_payment_signature
-from .models import SubscriptionPayment, Wallet, WalletTopUp, WalletTransaction
+from .models import GiftCard, SubscriptionPayment, Wallet, WalletTopUp, WalletTransaction
 from .services import (
     activate_payment,
     get_default_plan_id,
@@ -32,6 +32,22 @@ COIN_PACKS = [
     {"id": "coins_5000", "coins": 5000, "price_npr": 5000, "label": "5,000 Coins"},
 ]
 TOP_UP_PRESETS = [pack["coins"] for pack in COIN_PACKS]
+
+
+class GiftCardRedeemError(Exception):
+    """Base class for redemption failures with a message safe to show users."""
+
+
+class GiftCardInvalid(GiftCardRedeemError):
+    pass
+
+
+class GiftCardAlreadyRedeemed(GiftCardRedeemError):
+    pass
+
+
+class GiftCardExpired(GiftCardRedeemError):
+    pass
 
 
 class InsufficientWalletBalance(Exception):
@@ -220,6 +236,49 @@ def debit_wallet(
             payment_method=payment_method,
         )
     return wallet
+
+
+def redeem_gift_card(user, code: str) -> tuple[Wallet, GiftCard]:
+    """Redeem a gift card code for wallet coins.
+
+    Locks the matching GiftCard row for the duration of the transaction so
+    two concurrent redemption attempts for the same code can't both
+    succeed — the second request blocks on the row lock until the first
+    commits (flipping status to REDEEMED), then correctly sees it as
+    already used. credit_wallet's own atomic block nests safely inside
+    this one (Django uses a savepoint), matching the pattern already used
+    by activate_topup.
+    """
+    if not code or not code.strip():
+        raise GiftCardInvalid("This gift code isn't valid.")
+
+    code_hash = GiftCard.hash_code(code)
+
+    with transaction.atomic():
+        giftcard = GiftCard.objects.select_for_update().filter(code_hash=code_hash).first()
+
+        if giftcard is None or giftcard.status == GiftCard.STATUS_REVOKED:
+            raise GiftCardInvalid("This gift code isn't valid.")
+        if giftcard.status == GiftCard.STATUS_REDEEMED:
+            raise GiftCardAlreadyRedeemed("This gift code has already been redeemed.")
+        if giftcard.is_expired:
+            raise GiftCardExpired("This gift code has expired.")
+
+        giftcard.status = GiftCard.STATUS_REDEEMED
+        giftcard.redeemed_by = user
+        giftcard.redeemed_at = timezone.now()
+        giftcard.save(update_fields=["status", "redeemed_by", "redeemed_at", "updated_at"])
+
+        wallet = credit_wallet(
+            user,
+            giftcard.amount,
+            tx_type=WalletTransaction.TYPE_GIFT_REDEEM,
+            description=f"Redeemed gift card ····{giftcard.code_last4}",
+            reference_id=f"GIFT-{giftcard.id}",
+            payment_method=WalletTransaction.PAYMENT_METHOD_GIFT,
+        )
+
+    return wallet, giftcard
 
 
 def create_topup_request(user, amount: int | Decimal) -> tuple[WalletTopUp, dict]:

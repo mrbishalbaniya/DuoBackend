@@ -555,6 +555,7 @@ REST_FRAMEWORK = {
         "calls": "30/hour",
         "verification_handoff": "60/hour",
         "photo_upload": "40/hour",
+        "gift_redeem": "10/hour",
     },
     "EXCEPTION_HANDLER": "duo_project.exceptions.custom_exception_handler",
 }

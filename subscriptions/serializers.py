@@ -105,3 +105,13 @@ class WalletPurchaseResponseSerializer(serializers.Serializer):
     expires_at = serializers.DateTimeField()
     balance = serializers.IntegerField()
     plan = SubscriptionPlanSerializer()
+
+
+class GiftCardRedeemRequestSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=64, trim_whitespace=True)
+
+
+class GiftCardRedeemResponseSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+    amount = serializers.IntegerField()
+    balance = serializers.IntegerField()

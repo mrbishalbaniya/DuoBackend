@@ -22,6 +22,8 @@ from .esewa import (
 )
 from .models import SubscriptionPayment, WalletTopUp
 from .serializers import (
+    GiftCardRedeemRequestSerializer,
+    GiftCardRedeemResponseSerializer,
     InitiatePaymentResponseSerializer,
     SubscriptionPlanSerializer,
     SubscriptionStatusSerializer,
@@ -36,8 +38,12 @@ from .services import (
     get_subscription_plan,
     get_subscription_plans,
 )
+from .throttling import GiftCardRedeemThrottle
 
 from .wallet_services import (
+    GiftCardAlreadyRedeemed,
+    GiftCardExpired,
+    GiftCardInvalid,
     InsufficientWalletBalance,
     activate_topup,
     create_topup_request,
@@ -45,6 +51,7 @@ from .wallet_services import (
     get_wallet_transaction,
     list_wallet_transactions,
     purchase_plan_with_wallet,
+    redeem_gift_card,
 )
 from duo_project.cache import api_cache, get_user_cache_version
 from duo_project.cache import keys as cache_keys
@@ -287,6 +294,40 @@ class WalletPurchaseView(APIView):
                 "expires_at": payment.expires_at,
                 "balance": wallet["balance"],
                 "plan": active_plan,
+            }
+        )
+
+
+class GiftCardRedeemView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [GiftCardRedeemThrottle]
+
+    @extend_schema(
+        tags=["Wallet"],
+        summary="Redeem a gift card code for wallet coins",
+        request=GiftCardRedeemRequestSerializer,
+        responses={200: GiftCardRedeemResponseSerializer},
+    )
+    def post(self, request):
+        serializer = GiftCardRedeemRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        code = serializer.validated_data["code"]
+
+        try:
+            wallet, giftcard = redeem_gift_card(request.user, code)
+        except GiftCardAlreadyRedeemed as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        except GiftCardExpired as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_410_GONE)
+        except GiftCardInvalid as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+
+        amount = int(giftcard.amount)
+        return Response(
+            {
+                "detail": f"Redeemed {amount:,} coins!",
+                "amount": amount,
+                "balance": int(wallet.balance),
             }
         )
 

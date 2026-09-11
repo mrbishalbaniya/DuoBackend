@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    GiftCardRedeemView,
     WalletPurchaseView,
     WalletTopUpInitiateView,
     WalletTransactionDetailView,
@@ -18,4 +19,5 @@ urlpatterns = [
     ),
     path("topup/initiate/", WalletTopUpInitiateView.as_view(), name="wallet_topup_initiate"),
     path("purchase/", WalletPurchaseView.as_view(), name="wallet_purchase"),
+    path("giftcard/redeem/", GiftCardRedeemView.as_view(), name="wallet_giftcard_redeem"),
 ]

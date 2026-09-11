@@ -13,12 +13,20 @@ class Profile(models.Model):
         ("Buddhist", "Buddhist"),
         ("Christian", "Christian"),
         ("Muslim", "Muslim"),
+        ("Kirat", "Kirat"),
+        ("Sikh", "Sikh"),
+        ("Jain", "Jain"),
+        ("Jewish", "Jewish"),
+        ("Non-religious", "Non-religious"),
         ("Other", "Other"),
     ]
     WORK_PREF_CHOICES = [
         ("Private", "Private Sector"),
         ("Government", "Government"),
         ("Business", "Business/Self-Employed"),
+        ("Freelancer", "Freelancer"),
+        ("Student", "Student"),
+        ("Retired", "Retired"),
         ("NotWorking", "Not Working"),
     ]
     GENDER_PREF_CHOICES = [

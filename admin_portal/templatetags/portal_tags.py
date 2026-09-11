@@ -1,4 +1,5 @@
 from django import template
+from django.apps import apps as django_apps
 from django.urls import reverse
 
 from admin_portal.menu import PORTAL_MENU_GROUPS, QUICK_ACTIONS
@@ -26,6 +27,32 @@ def get_portal_menu():
                     except Exception:
                         url = "#"
                 items.append({**item, "url": url, "badge": 0})
+
+        # Explicit "app_label.ModelName" entries — for groups that pick
+        # specific models out of an app rather than showing all of it (e.g.
+        # "wallet" and "subscriptions" both pull from the subscriptions app,
+        # split across two sidebar sections). This was previously silently
+        # ignored: only "apps" (whole app-label) was handled below, so any
+        # group defined with "models" rendered with zero items and vanished
+        # from the sidebar entirely (`if items:` at the bottom skips it).
+        for dotted in group_def.get("models", []):
+            try:
+                app_label, model_name = dotted.split(".", 1)
+                model = django_apps.get_model(app_label, model_name)
+            except (LookupError, ValueError):
+                continue
+            if model not in admin.site._registry:
+                continue
+            try:
+                url = reverse(f"admin:{model._meta.app_label}_{model._meta.model_name}_changelist")
+            except Exception:
+                continue
+            items.append({
+                "label": model._meta.verbose_name_plural.title(),
+                "url": url,
+                "icon": _icon_for_model(app_label, model._meta.model_name),
+                "badge": _badge_for_app(app_label, model._meta.model_name, badges),
+            })
 
         for app_label in group_def.get("apps", []):
             try:
@@ -71,6 +98,7 @@ def _icon_for_model(app_label, model_name):
         ("chat", "message"): "fas fa-envelope",
         ("subscriptions", "subscriptionpayment"): "fas fa-credit-card",
         ("subscriptions", "wallet"): "fas fa-wallet",
+        ("subscriptions", "giftcard"): "fas fa-gift",
         ("security", "securityevent"): "fas fa-exclamation-triangle",
         ("analytics", "analyticsevent"): "fas fa-bolt",
         ("photo_verification", "userverification"): "fas fa-certificate",

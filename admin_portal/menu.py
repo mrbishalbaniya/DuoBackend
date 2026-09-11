@@ -42,6 +42,7 @@ PORTAL_MENU_GROUPS = [
             "subscriptions.Wallet",
             "subscriptions.WalletTransaction",
             "subscriptions.WalletTopUp",
+            "subscriptions.GiftCard",
         ],
     },
     {

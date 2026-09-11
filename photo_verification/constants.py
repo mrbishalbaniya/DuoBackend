@@ -82,8 +82,18 @@ NSFW_REVIEW_LABEL_REJECT_THRESHOLD = 0.75
 
 # CLIP zero-shot similarity margin (unsafe-prompt score minus best safe-prompt
 # score) above which we treat a category as detected.
-CLIP_UNSAFE_REJECT_MARGIN = 0.08
-CLIP_UNSAFE_REVIEW_MARGIN = 0.03
+#
+# 2026-09-11: raised from 0.08/0.03. At the old values, ordinary registration
+# photos were routinely landing in MANUAL_REVIEW — a margin of 0.03 is well
+# within CLIP's normal zero-shot noise floor (an unrelated random-noise test
+# image alone scored a 0.048 margin, comfortably past the old REVIEW
+# threshold), so the check was firing on far more than genuinely borderline
+# content. NudeNet (the stronger, nudity-specific check above) is unaffected
+# by this change — this only relaxes the weaker, best-effort CLIP pass for
+# violence/weapons/hate-symbols/non-photo content. Revisit with real
+# labeled examples if false negatives show up in manual review.
+CLIP_UNSAFE_REJECT_MARGIN = 0.22
+CLIP_UNSAFE_REVIEW_MARGIN = 0.12
 
 
 # --- Selfie verification & face matching ---
