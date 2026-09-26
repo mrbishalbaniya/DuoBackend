@@ -15,7 +15,7 @@ def send_configured_mail(
     html_message: str | None = None,
     context: dict | None = None,
 ) -> None:
-    """Send mail through the configured provider (Brevo SMTP by default)."""
+    """Send mail through the configured provider (Google SMTP)."""
     for recipient in recipient_list:
         send_email(
             event=event,

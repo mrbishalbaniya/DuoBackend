@@ -94,6 +94,23 @@ class ProfilePhotoApprovalGateTests(APITestCase):
         response = self._put({"photo_url": "https://example.com/ok.jpg", "photo_urls": []})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def test_manual_review_photo_can_be_set(self):
+        """Registration/profile save must not block on a human reviewer — a
+        MANUAL_REVIEW photo (borderline content-safety/quality, e.g. multiple
+        faces) is usable immediately, same as APPROVED. Only REJECTED is
+        blocked. See accounts/serializers.py ProfileSerializer.validate."""
+        from photo_verification.constants import ModerationStatus
+        from photo_verification.models import ProfilePhoto
+
+        ProfilePhoto.objects.create(
+            user=self.user,
+            url="https://example.com/borderline.jpg",
+            status=ModerationStatus.MANUAL_REVIEW,
+            order=0,
+        )
+        response = self._put({"photo_url": "https://example.com/borderline.jpg", "photo_urls": []})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
     def test_rejected_photo_cannot_be_set(self):
         from photo_verification.constants import ModerationStatus
         from photo_verification.models import ProfilePhoto

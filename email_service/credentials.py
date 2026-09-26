@@ -3,10 +3,6 @@
 from __future__ import annotations
 
 PLACEHOLDER_MARKERS = (
-    "your-brevo",
-    "your-brevo-smtp",
-    "xkeysib-your",
-    "xsmtpsib-your",
     "change-me",
     "example.com",
     "placeholder",
@@ -18,16 +14,6 @@ def is_placeholder(value: str) -> bool:
     if not text:
         return True
     return any(marker in text for marker in PLACEHOLDER_MARKERS)
-
-
-def is_valid_brevo_api_key(value: str) -> bool:
-    key = (value or "").strip()
-    return key.startswith("xkeysib-") and len(key) > 20 and not is_placeholder(key)
-
-
-def is_valid_brevo_smtp_key(value: str) -> bool:
-    key = (value or "").strip().replace(" ", "")
-    return key.startswith("xsmtpsib-") and len(key) > 20 and not is_placeholder(key)
 
 
 def smtp_configured(host: str, username: str, password: str) -> bool:

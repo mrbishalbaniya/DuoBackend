@@ -199,12 +199,20 @@ class ProfileSerializer(serializers.ModelSerializer):
                 )
 
             # The core safety gate: a URL may only be added to the profile if
-            # it's backed by an APPROVED ProfilePhoto row for this user. URLs
-            # already on the profile before this request are grandfathered
-            # through untouched (existing users aren't broken by unrelated
-            # edits). Every discovery/matching/chat surface already reads
-            # Profile.photo_url/photo_urls unconditionally — this is what
-            # makes that safe without needing to change any of them.
+            # it's backed by a real ProfilePhoto row for this user that isn't
+            # REJECTED. REJECTED covers both content-safety rejections
+            # (nudity/violence/hate/etc, via the synchronous pipeline in
+            # PhotoUploadView) and quality rejections — those never get a
+            # usable URL in the first place. MANUAL_REVIEW photos ARE let
+            # through immediately: registration doesn't block on a human
+            # reviewer, by design (2026-09-27) — a flagged photo just goes to
+            # the review queue in the background without stalling signup.
+            # URLs already on the profile before this request are
+            # grandfathered through untouched (existing users aren't broken
+            # by unrelated edits). Every discovery/matching/chat surface
+            # already reads Profile.photo_url/photo_urls unconditionally —
+            # this is what makes that safe without needing to change any of
+            # them.
             if user is not None and getattr(user, "is_authenticated", False):
                 existing_urls = set()
                 if instance is not None:
@@ -221,19 +229,17 @@ class ProfileSerializer(serializers.ModelSerializer):
                     from photo_verification.constants import ModerationStatus
                     from photo_verification.models import ProfilePhoto
 
-                    approved_urls = set(
-                        ProfilePhoto.objects.filter(
-                            user=user,
-                            status=ModerationStatus.APPROVED,
-                            url__in=added_urls,
-                        ).values_list("url", flat=True)
+                    usable_urls = set(
+                        ProfilePhoto.objects.filter(user=user, url__in=added_urls)
+                        .exclude(status=ModerationStatus.REJECTED)
+                        .values_list("url", flat=True)
                     )
-                    if added_urls - approved_urls:
+                    if added_urls - usable_urls:
                         raise serializers.ValidationError(
                             {
                                 "photo_urls": (
-                                    "One or more photos haven't finished moderation yet. "
-                                    "Please wait for approval, or remove them and try again."
+                                    "One or more photos couldn't be used. "
+                                    "Please remove them and upload again."
                                 )
                             }
                         )

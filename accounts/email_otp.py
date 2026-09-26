@@ -1,5 +1,6 @@
 import secrets
 import string
+import time
 
 from django.conf import settings
 from django.core.cache import cache
@@ -13,6 +14,7 @@ OTP_MAX_ATTEMPTS = 5
 EMAIL_VERIFIED_TTL_SECONDS = 1800
 EMAIL_VERIFIED_PREFIX = "email_verified:"
 OTP_ATTEMPTS_PREFIX = "email_otp_attempts:"
+OTP_RESEND_COOLDOWN_SECONDS = 60
 
 
 def normalize_email(email: str) -> str:
@@ -33,6 +35,29 @@ def _verified_key(email: str) -> str:
 
 def generate_otp() -> str:
     return "".join(secrets.choice(string.digits) for _ in range(OTP_LENGTH))
+
+
+def _cooldown_cache_key(prefix: str, email: str) -> str:
+    return f"{prefix}:{normalize_email(email)}"
+
+
+def get_otp_cooldown_remaining(prefix: str, email: str) -> int:
+    """Seconds left before another code may be requested (0 if none active).
+
+    Shared by every email-OTP flow (registration, password reset, login) so
+    resend cooldowns behave identically everywhere — the resulting `retry_after`
+    is a real, cache-backed value (not something the frontend just guesses),
+    surviving page refreshes/reconnects and enforced independently of whatever
+    the client claims.
+    """
+    cooldown_until = cache.get(_cooldown_cache_key(prefix, email))
+    if not cooldown_until:
+        return 0
+    return max(0, int(cooldown_until - time.time()))
+
+
+def start_otp_cooldown(prefix: str, email: str, seconds: int = OTP_RESEND_COOLDOWN_SECONDS) -> None:
+    cache.set(_cooldown_cache_key(prefix, email), time.time() + seconds, seconds)
 
 
 def require_email_otp_for_registration() -> bool:
@@ -58,6 +83,7 @@ def send_email_otp(email: str) -> None:
     code = generate_otp()
     cache.set(_cache_key(normalized), code, OTP_TTL_SECONDS)
     cache.delete(_attempts_key(normalized))
+    start_otp_cooldown("email_otp_cooldown", normalized)
 
     send_email(
         event=EmailEvent.REGISTRATION_OTP,

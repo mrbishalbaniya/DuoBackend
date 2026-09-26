@@ -37,7 +37,19 @@ from .google_auth import (
     get_or_create_google_user,
     verify_google_id_token,
 )
-from .email_otp import send_email_otp, verify_email_otp
+from .email_otp import (
+    OTP_RESEND_COOLDOWN_SECONDS,
+    get_otp_cooldown_remaining,
+    send_email_otp,
+    start_otp_cooldown,
+    verify_email_otp,
+)
+from .login_otp import (
+    get_login_otp_cooldown_remaining,
+    send_login_otp,
+    start_login_otp_cooldown,
+    verify_login_otp,
+)
 from .password_reset import (
     clear_password_reset_otp,
     send_password_reset_otp,
@@ -218,9 +230,25 @@ class EmailOtpSendView(APIView):
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data["email"].strip().lower()
 
+        cooldown_remaining = get_otp_cooldown_remaining("email_otp_cooldown", email)
+        if cooldown_remaining > 0:
+            return Response(
+                {
+                    "detail": f"Please wait {cooldown_remaining}s before requesting another code.",
+                    "retry_after": cooldown_remaining,
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         if User.objects.filter(email__iexact=email).exists():
-            # Prevent email enumeration — same response shape as success.
-            return Response({"sent": True, "email": email}, status=status.HTTP_200_OK)
+            # Prevent email enumeration — same response shape as success, and
+            # start the same cooldown so timing/behavior can't reveal whether
+            # the account exists.
+            start_otp_cooldown("email_otp_cooldown", email)
+            return Response(
+                {"sent": True, "email": email, "retry_after": OTP_RESEND_COOLDOWN_SECONDS},
+                status=status.HTTP_200_OK,
+            )
 
         try:
             send_email_otp(email)
@@ -239,7 +267,10 @@ class EmailOtpSendView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        return Response({"sent": True, "email": email}, status=status.HTTP_200_OK)
+        return Response(
+            {"sent": True, "email": email, "retry_after": OTP_RESEND_COOLDOWN_SECONDS},
+            status=status.HTTP_200_OK,
+        )
 
 
 class EmailOtpVerifyView(APIView):
@@ -284,6 +315,16 @@ class PasswordForgotView(APIView):
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data["email"].strip().lower()
 
+        cooldown_remaining = get_otp_cooldown_remaining("password_reset_cooldown", email)
+        if cooldown_remaining > 0:
+            return Response(
+                {
+                    "detail": f"Please wait {cooldown_remaining}s before requesting another code.",
+                    "retry_after": cooldown_remaining,
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         user = User.objects.filter(email__iexact=email).first()
         if user and user.has_usable_password():
             try:
@@ -297,11 +338,16 @@ class PasswordForgotView(APIView):
                     {"detail": "Could not send password reset email. Check email settings in the admin."},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
+        else:
+            # No account (or no usable password) to send to — still start the
+            # cooldown so the response timing can't reveal account existence.
+            start_otp_cooldown("password_reset_cooldown", email)
 
         return Response(
             {
                 "sent": True,
                 "message": "If an account exists for this email, a reset code has been sent.",
+                "retry_after": OTP_RESEND_COOLDOWN_SECONDS,
             },
             status=status.HTTP_200_OK,
         )
@@ -346,6 +392,120 @@ class PasswordResetView(APIView):
             {"reset": True, "message": "Password updated successfully."},
             status=status.HTTP_200_OK,
         )
+
+
+class LoginOtpRequestView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRateThrottle]
+
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Request a one-time login code by email",
+        request=PasswordForgotSerializer,
+        auth=[],
+    )
+    def post(self, request):
+        serializer = PasswordForgotSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"].strip().lower()
+
+        cooldown_remaining = get_login_otp_cooldown_remaining(email)
+        if cooldown_remaining > 0:
+            return Response(
+                {
+                    "detail": f"Please wait {cooldown_remaining}s before requesting another code.",
+                    "retry_after": cooldown_remaining,
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if user:
+            try:
+                send_login_otp(email)
+            except (ValueError, RuntimeError) as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            except Exception:
+                return Response(
+                    {"detail": "Could not send login code. Check email settings in the admin."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+        else:
+            # No account to send to — still start the cooldown so response
+            # timing can't reveal whether the account exists.
+            start_login_otp_cooldown(email)
+
+        return Response(
+            {
+                "sent": True,
+                "message": "If an account exists for this email, a login code has been sent.",
+                "retry_after": OTP_RESEND_COOLDOWN_SECONDS,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class LoginOtpVerifyView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthRateThrottle]
+
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Verify a one-time login code and sign in",
+        request=EmailOtpVerifySerializer,
+        auth=[],
+    )
+    def post(self, request):
+        serializer = EmailOtpVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"].strip().lower()
+        otp = serializer.validated_data["otp"].strip()
+
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if not user or not verify_login_otp(email, otp):
+            return Response(
+                {"detail": "Invalid or expired code."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from security.services import security_service
+
+        try:
+            requires_2fa = security_service.login_requires_2fa(user, request)
+        except Exception:
+            logger.exception("login_otp_requires_2fa_failed user_id=%s", user.id)
+            requires_2fa = False
+
+        if requires_2fa:
+            challenge = security_service.create_login_challenge(user)
+            tfa = security_service.get_or_create_2fa(user)
+            return Response(
+                {
+                    "requires_2fa": True,
+                    "challenge_token": challenge,
+                    "methods": [tfa.method] if tfa.method else [],
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        refresh = RefreshToken.for_user(user)
+        data = {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+            "user": UserSerializer(user).data,
+        }
+
+        try:
+            security_service.record_login(
+                user, request, success=True, refresh_token=data["refresh"]
+            )
+        except Exception:
+            logger.exception("record_login_failed user_id=%s", user.id)
+
+        response = Response(data, status=status.HTTP_200_OK)
+        set_auth_cookies(response, data["access"], data["refresh"])
+        return response
 
 
 class PasswordChangeView(APIView):

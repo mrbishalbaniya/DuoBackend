@@ -496,7 +496,7 @@ EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="").strip()
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="").replace(" ", "")
 EMAIL_FROM_NAME = config("EMAIL_FROM_NAME", default="SajiloWork")
 EMAIL_BRAND_LOGO_URL = config("EMAIL_BRAND_LOGO_URL", default="")
-EMAIL_BRAND_PRIMARY_COLOR = config("EMAIL_BRAND_PRIMARY_COLOR", default="#6366f1")
+EMAIL_BRAND_PRIMARY_COLOR = config("EMAIL_BRAND_PRIMARY_COLOR", default="#e84a7a")
 EMAIL_FOOTER_TEXT = config("EMAIL_FOOTER_TEXT", default="© SajiloWork. All rights reserved.")
 EMAIL_SOCIAL_LINKS = config("EMAIL_SOCIAL_LINKS", default="")
 EMAIL_SMTP_TIMEOUT = config("EMAIL_SMTP_TIMEOUT", default=15, cast=int)
@@ -761,7 +761,34 @@ JAZZMIN_SETTINGS = {
     "show_sidebar": True,
     "navigation_expanded": False,
     "hide_apps": [],
-    "hide_models": [],
+    # Internal/raw tables with no day-to-day admin use. Pages still work by URL.
+    "hide_models": [
+        # Notifications: raw FCM tokens and per-user toggles users set in-app.
+        "notifications.DeviceToken",
+        "notifications.NotificationPreference",
+        # Analytics: raw events and snapshots feed the Executive Dashboard; view them there.
+        "analytics.AnalyticsEvent",
+        "analytics.DailyMetricSnapshot",
+        "analytics.HourlyMetricSnapshot",
+        "analytics.FunnelSnapshot",
+        "analytics.CohortSnapshot",
+        "analytics.SavedDashboard",
+        "analytics.SavedReport",
+        "analytics.ScheduledReport",
+        "analytics.AnalyticsAuditLog",
+        # Security: per-user secrets and session internals.
+        "security.TwoFactorSettings",
+        "security.BackupCode",
+        "security.BiometricCredential",
+        "security.UserDevice",
+        "security.UserSession",
+        # Machine data.
+        "photo_verification.FaceEmbedding",
+        "ai_profile.GeneratedProfileContent",
+        "django_celery_results.GroupResult",
+        "token_blacklist.OutstandingToken",
+        "token_blacklist.BlacklistedToken",
+    ],
     "default_icon_parents": "fas fa-folder",
     "default_icon_children": "fas fa-circle",
     "icons": {
@@ -800,6 +827,7 @@ JAZZMIN_SETTINGS = {
         "update.AppVersion": "fas fa-mobile-alt",
         "notifications": "fas fa-bell",
         "notifications.DeviceToken": "fas fa-broadcast-tower",
+        "notifications.PushDeliveryLog": "fas fa-bell",
         "photo_verification": "fas fa-camera",
         "photo_verification.PhotoAnalysis": "fas fa-image",
         "photo_verification.FaceEmbedding": "fas fa-user-check",

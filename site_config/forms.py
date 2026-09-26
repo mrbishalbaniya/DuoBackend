@@ -30,7 +30,7 @@ class SiteSettingsForm(forms.ModelForm):
 
     class Meta:
         model = SiteSettings
-        exclude = ("id", "brevo_api_key")
+        exclude = ("id",)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

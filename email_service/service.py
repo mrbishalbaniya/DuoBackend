@@ -230,6 +230,11 @@ def send_email(
         subject = subject or "Notification"
         text_body = message or ""
         html_body = html_message or ""
+        if html_body and "<html" not in html_body.lower():
+            # Caller passed a body fragment: give it the branded frame.
+            from email_service.rendering import wrap_html_body
+
+            html_body = wrap_html_body(html_body, config, preview_title=subject)
         if not html_body and text_body:
             from email_service.rendering import text_to_html_paragraphs, wrap_html_body
 

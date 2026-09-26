@@ -26,4 +26,3 @@ class EmailStatus(models.TextChoices):
 
 class EmailProvider(models.TextChoices):
     SMTP = "smtp", "SMTP"
-    BREVO_API = "brevo_api", "Brevo API"

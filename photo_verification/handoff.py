@@ -23,19 +23,19 @@ def send_verification_handoff_email(*, to: str, handoff_url: str, user_name: str
         "This link expires in 30 minutes. If you did not request verification, you can ignore this email."
     )
     html = f"""
-<p style="margin:0 0 16px;">{greeting}</p>
-<p style="margin:0 0 16px;">
+<p style="margin:0 0 16px;color:#b0b3ba;">{greeting}</p>
+<p style="margin:0 0 16px;color:#b0b3ba;">
   Continue your Duo profile verification on this device. Tap the button below on your phone or tablet.
   No login is required — the link is all you need.
 </p>
 <p style="margin:0 0 24px;text-align:center;">
   <a href="{handoff_url}"
-     style="display:inline-block;padding:14px 28px;background:#6366f1;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:600;">
+     style="display:inline-block;padding:14px 28px;background:#e84a7a;color:#ffffff;text-decoration:none;border-radius:999px;font-weight:700;">
     Open verification
   </a>
 </p>
-<p style="margin:0;font-size:14px;color:#71717a;">
-  Or copy this link: <a href="{handoff_url}">{handoff_url}</a><br/>
+<p style="margin:0;font-size:14px;color:#9ca3af;">
+  Or copy this link: <a href="{handoff_url}" style="color:#e84a7a;">{handoff_url}</a><br/>
   This link expires in 30 minutes.
 </p>
 """

@@ -21,7 +21,7 @@ class Command(BaseCommand):
         env_from = getattr(settings, "DEFAULT_FROM_EMAIL", "") or ""
         env_from_name = getattr(settings, "EMAIL_FROM_NAME", "") or ""
 
-        if (not obj.email_host or obj.email_host == "smtp-relay.brevo.com") and env_host:
+        if not obj.email_host and env_host:
             obj.email_host = env_host
             updated.append("email_host")
 

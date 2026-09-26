@@ -93,12 +93,6 @@ class SiteSettings(models.Model):
     )
 
     # Email delivery — Google SMTP (Gmail / Google Workspace) only.
-    brevo_api_key = models.CharField(
-        max_length=255,
-        blank=True,
-        help_text="Deprecated — no longer used. Leave blank.",
-    )
-
     # Google SMTP transport options
     email_host = models.CharField(
         max_length=255,

@@ -10,6 +10,8 @@ from .views import (
     PasswordResetView,
     PasswordChangeView,
     DeleteAccountView,
+    LoginOtpRequestView,
+    LoginOtpVerifyView,
 )
 from .jwt_views import (
     CookieTokenObtainPairView,
@@ -22,6 +24,8 @@ from .jwt_views import (
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
     path('login/', CookieTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('login/otp/request/', LoginOtpRequestView.as_view(), name='login_otp_request'),
+    path('login/otp/verify/', LoginOtpVerifyView.as_view(), name='login_otp_verify'),
     path('google/', GoogleAuthView.as_view(), name='google_auth'),
     path('google/callback/', GoogleOAuthCallbackView.as_view(), name='google_oauth_callback'),
     path('email/send-otp/', EmailOtpSendView.as_view(), name='email_send_otp'),
