@@ -8,16 +8,25 @@ from django.utils.safestring import mark_safe
 from .models import (
     GiftCard,
     SubscriptionPayment,
+    RewindPlan,
     SubscriptionPlan,
+    UnlimitedLikesPlan,
+    VisitedYouPlan,
     Wallet,
     WalletTopUp,
     WalletTransaction,
+    WhoLikedYouPlan,
 )
 from .services import activate_payment
 from .wallet_services import credit_wallet
 
-@admin.register(SubscriptionPlan)
-class SubscriptionPlanAdmin(admin.ModelAdmin):
+class FeaturePlanAdmin(admin.ModelAdmin):
+    """Shared admin for one premium feature's plans.
+
+    Each subclass is bound to a proxy model whose FEATURE decides which plans
+    are listed and which feature new plans get, so admins never pick it.
+    """
+
     list_display = (
         "name",
         "plan_id",
@@ -31,53 +40,36 @@ class SubscriptionPlanAdmin(admin.ModelAdmin):
         "sort_order",
     )
     list_editable = ("amount", "duration_days", "badge", "is_active", "is_default", "sort_order")
-    list_filter = ("feature", "is_active", "badge")
+    list_filter = ("is_active", "badge")
     search_fields = ("name", "plan_id", "description")
     ordering = ("sort_order", "duration_days")
     readonly_fields = ("created_at", "updated_at", "price_label")
-    fieldsets = (
-        (
-            "Who liked you package",
-            {
-                "fields": (
-                    "plan_id",
-                    "name",
-                    "description",
-                    "feature",
-                ),
-            },
-        ),
-        (
-            "Pricing",
-            {
-                "fields": (
-                    "amount",
-                    "currency",
-                    "duration_days",
-                    "badge",
-                    "price_label",
-                ),
-            },
-        ),
-        (
-            "Visibility",
-            {
-                "fields": (
-                    "is_active",
-                    "is_default",
-                    "sort_order",
-                ),
-            },
-        ),
-        (
-            "Timestamps",
-            {
-                "fields": ("created_at", "updated_at"),
-            },
-        ),
-    )
+
+    def get_fieldsets(self, request, obj=None):
+        return (
+            (
+                f"{self.model._meta.verbose_name.capitalize()} package",
+                {"fields": ("plan_id", "name", "description")},
+            ),
+            (
+                "Pricing",
+                {"fields": ("amount", "currency", "duration_days", "badge", "price_label")},
+            ),
+            (
+                "Visibility",
+                {"fields": ("is_active", "is_default", "sort_order")},
+            ),
+            (
+                "Timestamps",
+                {"fields": ("created_at", "updated_at")},
+            ),
+        )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(feature=self.model.FEATURE)
 
     def save_model(self, request, obj, form, change):
+        obj.feature = self.model.FEATURE
         if obj.is_default:
             SubscriptionPlan.objects.filter(
                 feature=obj.feature,
@@ -86,19 +78,40 @@ class SubscriptionPlanAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
 
+@admin.register(WhoLikedYouPlan)
+class WhoLikedYouPlanAdmin(FeaturePlanAdmin):
+    pass
+
+
+@admin.register(VisitedYouPlan)
+class VisitedYouPlanAdmin(FeaturePlanAdmin):
+    pass
+
+
+@admin.register(RewindPlan)
+class RewindPlanAdmin(FeaturePlanAdmin):
+    pass
+
+
+@admin.register(UnlimitedLikesPlan)
+class UnlimitedLikesPlanAdmin(FeaturePlanAdmin):
+    pass
+
+
 @admin.register(SubscriptionPayment)
 class SubscriptionPaymentAdmin(admin.ModelAdmin):
     list_display = (
         "transaction_uuid",
         "user",
         "plan_id",
+        "feature",
         "total_amount",
         "status",
         "paid_at",
         "expires_at",
         "created_at",
     )
-    list_filter = ("status", "plan_id")
+    list_filter = ("status", "feature", "plan_id")
     search_fields = ("transaction_uuid", "user__username", "user__email", "esewa_ref_id")
     readonly_fields = ("created_at", "updated_at")
     actions = ("activate_subscriptions",)
@@ -128,6 +141,11 @@ class SubscriptionPaymentAdmin(admin.ModelAdmin):
             )
 
     def save_model(self, request, obj, form, change):
+        # A pass unlocks whatever its plan unlocks; keep legacy "all" passes as-is.
+        if obj.feature != SubscriptionPayment.FEATURE_ALL:
+            plan = SubscriptionPlan.objects.filter(plan_id=obj.plan_id).first()
+            if plan:
+                obj.feature = plan.feature
         super().save_model(request, obj, form, change)
 
         if (

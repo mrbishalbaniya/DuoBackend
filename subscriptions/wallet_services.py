@@ -376,10 +376,10 @@ def activate_topup(
 
 
 def purchase_plan_with_wallet(user, plan_id: str | None = None) -> SubscriptionPayment:
-    if user_has_active_subscription(user):
-        raise ValueError("You already have an active Duo Premium pass.")
-
     plan = get_plan_by_id(plan_id or get_default_plan_id())
+    if user_has_active_subscription(user, plan["feature"]):
+        raise ValueError(f"You already have an active {plan['feature_label']} pass.")
+
     amount = Decimal(str(plan["amount"]))
 
     with transaction.atomic():
@@ -398,6 +398,7 @@ def purchase_plan_with_wallet(user, plan_id: str | None = None) -> SubscriptionP
         payment = SubscriptionPayment.objects.create(
             user=user,
             plan_id=plan["plan_id"],
+            feature=plan["feature"],
             transaction_uuid=transaction_uuid,
             amount=amount,
             tax_amount=Decimal("0"),

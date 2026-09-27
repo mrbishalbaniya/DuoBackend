@@ -11,6 +11,21 @@ class SubscriptionPlanSerializer(serializers.Serializer):
     amount = serializers.IntegerField()
     duration_days = serializers.IntegerField()
     badge = serializers.CharField(required=False, allow_null=True)
+    feature = serializers.CharField()
+    feature_label = serializers.CharField()
+
+
+class FeatureAccessSerializer(serializers.Serializer):
+    label = serializers.CharField()
+    is_active = serializers.BooleanField()
+    expires_at = serializers.DateTimeField(allow_null=True)
+
+
+class FeatureAccessMapSerializer(serializers.Serializer):
+    who_liked_you = FeatureAccessSerializer()
+    visited_you = FeatureAccessSerializer()
+    rewind = FeatureAccessSerializer()
+    unlimited_likes = FeatureAccessSerializer()
 
 
 class EsewaFormSerializer(serializers.Serializer):
@@ -48,6 +63,7 @@ class SubscriptionStatusSerializer(serializers.Serializer):
     is_premium = serializers.BooleanField()
     expires_at = serializers.DateTimeField(allow_null=True)
     plan = SubscriptionPlanSerializer()
+    features = FeatureAccessMapSerializer()
 
 
 class SubscriptionPaymentSerializer(serializers.ModelSerializer):

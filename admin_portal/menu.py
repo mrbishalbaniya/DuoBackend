@@ -50,7 +50,10 @@ PORTAL_MENU_GROUPS = [
         "label": "Subscriptions",
         "icon": "fas fa-crown",
         "models": [
-            "subscriptions.SubscriptionPlan",
+            "subscriptions.WhoLikedYouPlan",
+            "subscriptions.VisitedYouPlan",
+            "subscriptions.RewindPlan",
+            "subscriptions.UnlimitedLikesPlan",
             "subscriptions.SubscriptionPayment",
         ],
     },

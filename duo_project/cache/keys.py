@@ -86,8 +86,8 @@ def unread_count(user_id: int) -> str:
     return _join("notifications", "unread", user_id)
 
 
-def subscription_plans() -> str:
-    return _join("subscription", "plans")
+def subscription_plans(feature: str = "who_liked_you") -> str:
+    return _join("subscription", "plans", feature)
 
 
 def subscription_status(user_id: int, version: int) -> str:

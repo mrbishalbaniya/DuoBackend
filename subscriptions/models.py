@@ -10,10 +10,17 @@ from django.utils import timezone
 
 class SubscriptionPlan(models.Model):
     FEATURE_WHO_LIKED_YOU = "who_liked_you"
+    FEATURE_VISITED_YOU = "visited_you"
+    FEATURE_REWIND = "rewind"
+    FEATURE_UNLIMITED_LIKES = "unlimited_likes"
 
     FEATURE_CHOICES = [
         (FEATURE_WHO_LIKED_YOU, "Who liked you"),
+        (FEATURE_VISITED_YOU, "Visited you"),
+        (FEATURE_REWIND, "Rewind"),
+        (FEATURE_UNLIMITED_LIKES, "Unlimited likes"),
     ]
+    FEATURES = tuple(value for value, _label in FEATURE_CHOICES)
 
     BADGE_CHOICES = [
         ("", "None"),
@@ -40,7 +47,7 @@ class SubscriptionPlan(models.Model):
     is_active = models.BooleanField(default=True)
     is_default = models.BooleanField(
         default=False,
-        help_text="Used when no plan is selected (typically the 30-day pass).",
+        help_text="Pre-selected plan for its feature (typically the 30-day pass).",
     )
     sort_order = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -48,8 +55,8 @@ class SubscriptionPlan(models.Model):
 
     class Meta:
         ordering = ["sort_order", "duration_days", "amount"]
-        verbose_name = "Who liked you plan"
-        verbose_name_plural = "Who liked you plans"
+        verbose_name = "Subscription plan"
+        verbose_name_plural = "Subscription plans"
         indexes = [
             models.Index(
                 fields=["feature", "is_active", "is_default"],
@@ -63,7 +70,53 @@ class SubscriptionPlan(models.Model):
 
     @property
     def price_label(self):
+        if self.amount is None or self.duration_days is None:
+            return "-"
         return f"NPR {self.amount:.0f} / {self.duration_days} days"
+
+
+class WhoLikedYouPlan(SubscriptionPlan):
+    """Admin-only view of plans that unlock the "Who liked you" list."""
+
+    FEATURE = SubscriptionPlan.FEATURE_WHO_LIKED_YOU
+
+    class Meta:
+        proxy = True
+        verbose_name = "Who liked you plan"
+        verbose_name_plural = "Who liked you plans"
+
+
+class VisitedYouPlan(SubscriptionPlan):
+    """Admin-only view of plans that unlock the "Visited you" list."""
+
+    FEATURE = SubscriptionPlan.FEATURE_VISITED_YOU
+
+    class Meta:
+        proxy = True
+        verbose_name = "Visited you plan"
+        verbose_name_plural = "Visited you plans"
+
+
+class RewindPlan(SubscriptionPlan):
+    """Admin-only view of plans that unlock Rewind (undo a swipe)."""
+
+    FEATURE = SubscriptionPlan.FEATURE_REWIND
+
+    class Meta:
+        proxy = True
+        verbose_name = "Rewind plan"
+        verbose_name_plural = "Rewind plans"
+
+
+class UnlimitedLikesPlan(SubscriptionPlan):
+    """Admin-only view of plans that lift the free-tier Like limit."""
+
+    FEATURE = SubscriptionPlan.FEATURE_UNLIMITED_LIKES
+
+    class Meta:
+        proxy = True
+        verbose_name = "Unlimited likes plan"
+        verbose_name_plural = "Unlimited likes plans"
 
 
 class Wallet(models.Model):
@@ -211,12 +264,25 @@ class SubscriptionPayment(models.Model):
         (SOURCE_WALLET, "Wallet"),
     ]
 
+    # Passes bought before plans were split per feature unlocked every
+    # premium list, so those rows are migrated to FEATURE_ALL.
+    FEATURE_ALL = "all"
+    FEATURE_CHOICES = SubscriptionPlan.FEATURE_CHOICES + [
+        (FEATURE_ALL, "All premium features (legacy pass)"),
+    ]
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="subscription_payments",
     )
     plan_id = models.CharField(max_length=64, default="duo_premium_monthly")
+    feature = models.CharField(
+        max_length=32,
+        choices=FEATURE_CHOICES,
+        default=SubscriptionPlan.FEATURE_WHO_LIKED_YOU,
+        help_text="Premium list this pass unlocks.",
+    )
     transaction_uuid = models.CharField(max_length=64, unique=True, db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)

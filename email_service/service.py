@@ -191,6 +191,8 @@ def send_email(
     When queue=True, returns True after persisting a queued log entry (worker hook).
     """
     config = get_email_config()
+    # The worker re-renders from these, so keep what the caller passed.
+    caller_subject = subject
     recipients = _validate_recipients([to] if isinstance(to, str) else list(to))
     if not recipients:
         if not fail_silently:
@@ -240,6 +242,11 @@ def send_email(
 
             html_body = wrap_html_body(text_to_html_paragraphs(text_body), config, preview_title=subject)
 
+    if queue and getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False):
+        # No worker: the "queued" task would run inline and log its own
+        # sent/failed row, so a queued row here would only duplicate it.
+        queue = False
+
     if queue:
         from duo_project.tasks.email import queue_email
 
@@ -255,7 +262,7 @@ def send_email(
         queue_email(
             event=event,
             to=to,
-            subject=subject,
+            subject=caller_subject,
             message=message,
             html_message=html_message,
             context=ctx,

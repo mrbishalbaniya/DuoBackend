@@ -4,6 +4,7 @@ from django.urls import reverse
 
 from admin_portal.menu import PORTAL_MENU_GROUPS, QUICK_ACTIONS
 from admin_portal.services.activity import get_menu_badges
+from admin_portal.visibility import is_model_hidden
 
 register = template.Library()
 
@@ -41,7 +42,7 @@ def get_portal_menu():
                 model = django_apps.get_model(app_label, model_name)
             except (LookupError, ValueError):
                 continue
-            if model not in admin.site._registry:
+            if model not in admin.site._registry or is_model_hidden(model):
                 continue
             try:
                 url = reverse(f"admin:{model._meta.app_label}_{model._meta.model_name}_changelist")
@@ -60,7 +61,7 @@ def get_portal_menu():
                 models_in_app = [
                     (model, model_admin)
                     for model, model_admin in app_config.items()
-                    if model._meta.app_label == app_label
+                    if model._meta.app_label == app_label and not is_model_hidden(model)
                 ]
             except Exception:
                 models_in_app = []
@@ -96,6 +97,10 @@ def _icon_for_model(app_label, model_name):
         ("matching", "match"): "fas fa-fire",
         ("chat", "conversation"): "fas fa-comments",
         ("chat", "message"): "fas fa-envelope",
+        ("subscriptions", "wholikedyouplan"): "fas fa-heart",
+        ("subscriptions", "visitedyouplan"): "fas fa-eye",
+        ("subscriptions", "rewindplan"): "fas fa-rotate-left",
+        ("subscriptions", "unlimitedlikesplan"): "fas fa-infinity",
         ("subscriptions", "subscriptionpayment"): "fas fa-credit-card",
         ("subscriptions", "wallet"): "fas fa-wallet",
         ("subscriptions", "giftcard"): "fas fa-gift",
@@ -128,3 +133,21 @@ def get_quick_actions():
 @register.simple_tag
 def get_portal_badges():
     return get_menu_badges()
+
+
+@register.simple_tag
+def versioned_static(path):
+    """Static URL with ?v=<file mtime> so browsers fetch edited CSS/JS at once."""
+    import os
+
+    from django.contrib.staticfiles import finders
+    from django.templatetags.static import static
+
+    url = static(path)
+    found = finders.find(path)
+    if found:
+        try:
+            return f"{url}?v={int(os.path.getmtime(found))}"
+        except OSError:
+            pass
+    return url

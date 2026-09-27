@@ -7,7 +7,7 @@ from datetime import date, timedelta
 
 from django.utils import timezone
 
-from accounts.geo import CITY_COORDS, haversine_km, profile_coordinates
+from accounts.geo import CITY_COORDS, find_city_center, haversine_km, profile_coordinates
 from accounts.models import Profile
 from duo_project.cache.presence import is_online
 
@@ -174,8 +174,25 @@ def _diversity_jitter(viewer_id: int, profile_id: int) -> float:
     return int(digest[:8], 16) / 0xFFFFFFFF * 3.0
 
 
+def _known_city(text: str) -> str | None:
+    lowered = (text or "").lower()
+    return next((city for city in CITY_COORDS if city in lowered), None)
+
+
 def viewer_anchor(profile: Profile) -> tuple[str, tuple[float, float]]:
-    location = (profile.pref_location or profile.location or "").strip() or "Kathmandu, Nepal"
+    """Point that discovery distance is measured from.
+
+    A search city (pref_location) that differs from the viewer's own city wins,
+    so "show me people in Pokhara" works from Kathmandu. Otherwise the viewer's
+    own position is used, preferring live GPS.
+    """
+    own_location = (profile.location or "").strip()
+    search_location = (profile.pref_location or "").strip()
+    search_city = _known_city(search_location)
+    if search_city and search_city != _known_city(own_location):
+        return search_location, find_city_center(search_city)
+
+    location = own_location or search_location or "Kathmandu, Nepal"
     return location, profile_coordinates(location, profile.user_id, profile.pref_values)
 
 
@@ -211,6 +228,7 @@ def passes_hard_filters(
         return False
 
     if config.relationship_goal and config.relationship_goal != "everyone":
+        # A different goal is excluded; an unset goal passes but scores lower.
         goal = (candidate.relationship_goal or "").strip()
         if goal and goal != config.relationship_goal:
             return False

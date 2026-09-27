@@ -28,6 +28,9 @@ class AuthFlowTests(APITestCase):
             "password": "securepass123",
             "full_name": "Prod Test",
         }
+        from accounts.email_otp import mark_email_verified
+
+        mark_email_verified(payload["email"])
         register_response = self.client.post("/api/auth/register/", payload, format="json")
         self.assertEqual(register_response.status_code, status.HTTP_201_CREATED)
         self.assertIn("access", register_response.json()["tokens"])
@@ -37,6 +40,55 @@ class AuthFlowTests(APITestCase):
         self.assertEqual(me_response.status_code, status.HTTP_200_OK)
         self.assertEqual(me_response.json()["email"], "prodtest@example.com")
 
+    @override_settings(REQUIRE_EMAIL_OTP_FOR_REGISTRATION=True)
+    def test_register_requires_verified_email(self):
+        payload = {
+            "email": "unverified@example.com",
+            "password": "securepass123",
+            "full_name": "No Code",
+        }
+        response = self.client.post("/api/auth/register/", payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", response.json())
+
+    @override_settings(REQUIRE_EMAIL_OTP_FOR_REGISTRATION=True)
+    def test_register_with_verified_code(self):
+        from unittest.mock import patch
+
+        from accounts.email_otp import _cache_key
+
+        email = "coded@example.com"
+        with patch("accounts.email_otp.send_email"):
+            send = self.client.post("/api/auth/email/send-otp/", {"email": email}, format="json")
+        self.assertEqual(send.status_code, status.HTTP_200_OK)
+
+        from django.core.cache import cache
+
+        code = cache.get(_cache_key(email))
+        verify = self.client.post(
+            "/api/auth/email/verify-otp/", {"email": email, "otp": code}, format="json"
+        )
+        self.assertEqual(verify.status_code, status.HTTP_200_OK)
+
+        response = self.client.post(
+            "/api/auth/register/",
+            {"email": email, "password": "securepass123", "full_name": "Coded"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_send_otp_rejects_existing_email(self):
+        from django.contrib.auth import get_user_model
+
+        get_user_model().objects.create_user(
+            username="taken@example.com", email="taken@example.com", password="securepass123"
+        )
+        response = self.client.post(
+            "/api/auth/email/send-otp/", {"email": "taken@example.com"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()["code"], "email_taken")
+
     def test_login_rejects_invalid_credentials(self):
         response = self.client.post(
             "/api/auth/login/",
@@ -44,6 +96,34 @@ class AuthFlowTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_google_only_account_can_set_password_via_reset(self):
+        from unittest.mock import patch
+
+        from django.contrib.auth import get_user_model
+        from django.core.cache import cache
+
+        cache.clear()
+        user = get_user_model().objects.create(username="g@example.com", email="g@example.com")
+        user.set_unusable_password()
+        user.save()
+
+        with patch("accounts.password_reset.send_email") as send:
+            forgot = self.client.post(
+                "/api/auth/password/forgot/", {"email": "g@example.com"}, format="json"
+            )
+        self.assertEqual(forgot.status_code, status.HTTP_200_OK)
+        send.assert_called_once()
+        code = send.call_args.kwargs["context"]["otp_code"]
+
+        reset = self.client.post(
+            "/api/auth/password/reset/",
+            {"email": "g@example.com", "otp": code, "password": "Newpass!2345"},
+            format="json",
+        )
+        self.assertEqual(reset.status_code, status.HTTP_200_OK, reset.content)
+        user.refresh_from_db()
+        self.assertTrue(user.check_password("Newpass!2345"))
 
 
 @override_settings(

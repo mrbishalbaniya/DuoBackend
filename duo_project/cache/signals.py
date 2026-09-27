@@ -14,7 +14,16 @@ from matching.models import Match, ProfileVisit, Swipe
 from security.models import SecurityEvent
 from photo_verification.constants import VerificationStatus
 from photo_verification.models import UserVerification
-from subscriptions.models import SubscriptionPayment, SubscriptionPlan, Wallet, WalletTopUp
+from subscriptions.models import (
+    RewindPlan,
+    UnlimitedLikesPlan,
+    SubscriptionPayment,
+    SubscriptionPlan,
+    VisitedYouPlan,
+    Wallet,
+    WalletTopUp,
+    WhoLikedYouPlan,
+)
 
 from duo_project.cache.invalidation import (
     invalidate_conversation_for_users,
@@ -105,7 +114,18 @@ def wallet_cache_invalidate(sender, instance, **kwargs):
     invalidate_user_caches(instance.user_id, reason="wallet")
 
 
+# Admin edits save through the per-feature proxy models, which send their own
+# signals, so listen on the base model and every proxy.
 @receiver(post_save, sender=SubscriptionPlan)
+@receiver(post_save, sender=WhoLikedYouPlan)
+@receiver(post_save, sender=VisitedYouPlan)
+@receiver(post_save, sender=RewindPlan)
+@receiver(post_save, sender=UnlimitedLikesPlan)
+@receiver(post_delete, sender=SubscriptionPlan)
+@receiver(post_delete, sender=WhoLikedYouPlan)
+@receiver(post_delete, sender=VisitedYouPlan)
+@receiver(post_delete, sender=RewindPlan)
+@receiver(post_delete, sender=UnlimitedLikesPlan)
 def subscription_plan_cache_invalidate(sender, instance, **kwargs):
     invalidate_subscription_plans()
 

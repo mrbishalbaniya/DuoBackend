@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from django.db.models import QuerySet
 
 from accounts.models import Profile
 
-from matching.recommendation.fallback import build_search_stages
+from matching.recommendation.fallback import build_search_stages, stage_expansions
 from matching.recommendation.queries import (
-    build_broad_queryset,
     build_eligible_queryset,
     build_recycled_queryset,
 )
@@ -21,6 +22,7 @@ from matching.recommendation.types import DiscoverResult, ScoredProfile, SearchC
 RESULT_LIMIT = 25
 CANDIDATE_POOL_MAX = 400
 MIN_RESULTS_BEFORE_RELAX = 8
+RECYCLED_PENALTY = 25.0
 
 
 def _rank_candidates(
@@ -42,89 +44,74 @@ def _rank_candidates(
             config=config,
         )
         if config.recycled_skips:
-            score -= 25.0
+            score -= RECYCLED_PENALTY
         ranked.append(ScoredProfile(profile=candidate, score=score, distance_km=distance))
 
     ranked.sort(key=lambda row: (-row.score, row.distance_km, row.profile.id))
     return ranked
 
 
-def _resolve_pool(user, config: SearchConfig) -> QuerySet[Profile]:
-    if config.recycled_skips:
-        return build_recycled_queryset(user)
-    return build_eligible_queryset(user)
+def _best_stage(
+    viewer: Profile,
+    queryset: QuerySet[Profile],
+    stages: list[tuple[str, SearchConfig]],
+) -> tuple[str, SearchConfig, list[ScoredProfile]]:
+    """First stage with enough people, else the stage that found the most."""
+    best: tuple[str, SearchConfig, list[ScoredProfile]] | None = None
+    for stage_name, config in stages:
+        ranked = _rank_candidates(viewer, queryset, config)
+        if len(ranked) >= MIN_RESULTS_BEFORE_RELAX:
+            return stage_name, config, ranked
+        if best is None or len(ranked) > len(best[2]):
+            best = (stage_name, config, ranked)
+    return best if best is not None else (stages[0][0], stages[0][1], [])
 
 
 def discover_profiles(user) -> DiscoverResult:
+    """Profiles for the swipe deck, always within the viewer's filters.
+
+    Order: people the viewer hasn't swiped yet, then (only if that runs short)
+    people they skipped before. Liked, matched and blocked people never return.
+    """
     viewer = user.profile
-    fresh_pool = build_eligible_queryset(user)
-    total_fresh = fresh_pool.count()
-
-    pools: list[tuple[str, QuerySet[Profile], bool]] = [
-        ("fresh", fresh_pool, False),
-    ]
-    if total_fresh == 0:
-        recycled_pool = build_recycled_queryset(user)
-        if recycled_pool.exists():
-            pools.append(("recycled", recycled_pool, True))
-
-    broad_pool = build_broad_queryset(user)
-    if broad_pool.exists():
-        pools.append(("broad", broad_pool, False))
-
     stages = build_search_stages(viewer)
-    best_ranked: list[ScoredProfile] = []
-    best_stage = "strict"
+    strict_config = stages[0][1]
+
+    fresh_pool = build_eligible_queryset(user)
+    stage_name, stage_config, ranked = _best_stage(viewer, fresh_pool, stages)
+    rows = ranked[:RESULT_LIMIT]
+    expansions = stage_expansions(strict_config, stage_config) if rows else []
+
     used_recycled = False
+    if len(rows) < MIN_RESULTS_BEFORE_RELAX:
+        recycled_stages = [(name, replace(config, recycled_skips=True)) for name, config in stages]
+        recycled_name, recycled_config, recycled = _best_stage(
+            viewer, build_recycled_queryset(user), recycled_stages
+        )
+        seen = {row.profile.id for row in rows}
+        extra = [row for row in recycled if row.profile.id not in seen]
+        if extra:
+            used_recycled = True
+            rows = (rows + extra)[:RESULT_LIMIT]
+            for reason in stage_expansions(strict_config, recycled_config):
+                if reason not in expansions:
+                    expansions.append(reason)
+            if not ranked:
+                stage_name = recycled_name
 
-    for pool_name, queryset, recycled in pools:
-        for stage_name, config in stages:
-            stage_config = config
-            if recycled and not config.recycled_skips:
-                stage_config = SearchConfig(
-                    age_min=config.age_min,
-                    age_max=config.age_max,
-                    max_distance_km=config.max_distance_km,
-                    location_pref=config.location_pref,
-                    apply_location=config.apply_location,
-                    gender=config.gender,
-                    relationship_goal=config.relationship_goal,
-                    verified_only=config.verified_only,
-                    prefer_verified=config.prefer_verified,
-                    prefer_active=config.prefer_active,
-                    prefer_popular=config.prefer_popular,
-                    prefer_new=config.prefer_new,
-                    ignore_distance=config.ignore_distance,
-                    recycled_skips=True,
-                )
+    for row in rows:
+        # Read by ProfileSerializer.get_distance_km (rounded there for privacy).
+        row.profile.discover_distance_km = row.distance_km
 
-            ranked = _rank_candidates(viewer, queryset, stage_config)
-            if len(ranked) >= MIN_RESULTS_BEFORE_RELAX:
-                profiles = [row.profile for row in ranked[:RESULT_LIMIT]]
-                expanded = stage_name != "strict" or recycled or pool_name != "fresh"
-                return DiscoverResult(
-                    profiles=profiles,
-                    expanded_search=expanded,
-                    relaxation_stage=stage_name if pool_name == "fresh" else f"{pool_name}_{stage_name}",
-                    recycled_skips=recycled or stage_config.recycled_skips,
-                    meta={
-                        "pool": pool_name,
-                        "fresh_pool": total_fresh,
-                        "stage_count": len(ranked),
-                    },
-                )
-            if len(ranked) > len(best_ranked):
-                best_ranked = ranked
-                best_stage = stage_name if pool_name == "fresh" else f"{pool_name}_{stage_name}"
-                used_recycled = recycled or stage_config.recycled_skips
-
-    profiles = [row.profile for row in best_ranked[:RESULT_LIMIT]]
     return DiscoverResult(
-        profiles=profiles,
-        expanded_search=best_stage != "strict" or used_recycled or len(profiles) > 0,
-        relaxation_stage=best_stage,
+        profiles=[row.profile for row in rows],
+        expanded_search=bool(expansions),
+        relaxation_stage=stage_name,
         recycled_skips=used_recycled,
-        meta={"fresh_pool": total_fresh, "stage_count": len(best_ranked)},
+        meta={
+            "fresh_found": len(ranked),
+            "expansions": expansions,
+        },
     )
 
 

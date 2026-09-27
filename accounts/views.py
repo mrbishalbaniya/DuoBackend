@@ -241,13 +241,15 @@ class EmailOtpSendView(APIView):
             )
 
         if User.objects.filter(email__iexact=email).exists():
-            # Prevent email enumeration — same response shape as success, and
-            # start the same cooldown so timing/behavior can't reveal whether
-            # the account exists.
-            start_otp_cooldown("email_otp_cooldown", email)
+            # Registration already reveals taken emails (unique check), so say
+            # it plainly instead of leaving the user waiting for a code that
+            # will never arrive.
             return Response(
-                {"sent": True, "email": email, "retry_after": OTP_RESEND_COOLDOWN_SECONDS},
-                status=status.HTTP_200_OK,
+                {
+                    "detail": "An account with this email already exists. Sign in instead.",
+                    "code": "email_taken",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
@@ -325,8 +327,11 @@ class PasswordForgotView(APIView):
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
 
-        user = User.objects.filter(email__iexact=email).first()
-        if user and user.has_usable_password():
+        # Google-created accounts have no usable password yet; a reset code is
+        # how they set one (PasswordChangeView points them here), so send it
+        # to any active account.
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if user:
             try:
                 send_password_reset_otp(email)
             except ValueError as exc:
@@ -339,7 +344,7 @@ class PasswordForgotView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
         else:
-            # No account (or no usable password) to send to — still start the
+            # No account to send to — still start the
             # cooldown so the response timing can't reveal account existence.
             start_otp_cooldown("password_reset_cooldown", email)
 
@@ -371,8 +376,8 @@ class PasswordResetView(APIView):
         otp = serializer.validated_data["otp"].strip()
         password = serializer.validated_data["password"]
 
-        user = User.objects.filter(email__iexact=email).first()
-        if not user or not user.has_usable_password():
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if not user:
             return Response(
                 {"detail": "Invalid or expired reset code."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -387,6 +392,13 @@ class PasswordResetView(APIView):
         user.set_password(password)
         user.save(update_fields=["password"])
         clear_password_reset_otp(email)
+
+        try:
+            from security.services import security_service
+
+            security_service.on_password_changed(user, request)
+        except Exception:
+            logger.exception("password_reset_security_event_failed user_id=%s", user.id)
 
         return Response(
             {"reset": True, "message": "Password updated successfully."},
@@ -728,6 +740,11 @@ class DiscoverView(APIView):
         response = Response(payload["profiles"])
         if payload.get("expanded_search"):
             response["X-Duo-Discover-Expanded"] = "1"
+        expansions = payload.get("expansions") or []
+        if expansions:
+            response["X-Duo-Discover-Expansions"] = ",".join(expansions)
+        if payload.get("recycled_skips"):
+            response["X-Duo-Discover-Recycled"] = "1"
         return response
 
     @staticmethod
@@ -738,6 +755,7 @@ class DiscoverView(APIView):
             "profiles": ProfileSerializer(result.profiles, many=True, context=context).data,
             "expanded_search": result.expanded_search or result.recycled_skips,
             "recycled_skips": result.recycled_skips,
+            "expansions": result.meta.get("expansions", []),
         }
 
 

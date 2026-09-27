@@ -84,6 +84,16 @@ class Profile(models.Model):
         max_length=20, choices=RELATIONSHIP_GOAL_PREF_CHOICES, default="everyone"
     )
     pref_verified_only = models.BooleanField(default=False)
+    # When discovery runs out, may it go past the viewer's distance / age
+    # limits? Gender, goal and verified-only are never relaxed.
+    pref_expand_distance = models.BooleanField(
+        default=True,
+        help_text="Show people further away when nobody is left within the distance limit.",
+    )
+    pref_expand_age = models.BooleanField(
+        default=True,
+        help_text="Show people slightly outside the age range when nobody is left inside it.",
+    )
     relationship_goal = models.CharField(
         max_length=20, choices=RELATIONSHIP_GOAL_CHOICES, blank=True, default=""
     )

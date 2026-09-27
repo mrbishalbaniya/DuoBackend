@@ -13,7 +13,7 @@ from email_service.rendering import THEME, button_html
 
 # Bump when the shipped HTML changes; stored rows carrying an older marker
 # (i.e. never hand-edited in admin) are upgraded automatically.
-TEMPLATE_VERSION = "duo-template:v4"
+TEMPLATE_VERSION = "duo-template:v6"
 _MARKER = f"<!-- {TEMPLATE_VERSION} -->"
 
 DEFAULT_SUBJECTS = {
@@ -177,8 +177,8 @@ def _message_text(intro: str = "") -> str:
 # ── Text bodies ───────────────────────────────────────────────────────────
 DEFAULT_TEXT_BODIES = {
     EmailEvent.REGISTRATION_OTP: _otp_text(
-        "Use this code to verify your email and finish creating your {{ brand_name }} account:",
-        "If you didn't try to sign up, you can safely ignore this email.",
+        "Welcome to {{ brand_name }}! Enter this code on the sign-up screen to verify your email and continue creating your account:",
+        "If you didn't try to sign up, you can safely ignore this email. No account will be created.",
     ),
     EmailEvent.PASSWORD_RESET_OTP: _otp_text(
         "We received a request to reset your {{ brand_name }} password. Your reset code is:",
@@ -186,7 +186,7 @@ DEFAULT_TEXT_BODIES = {
     ),
     EmailEvent.LOGIN_VERIFICATION: _otp_text(
         "Someone is signing in to your {{ brand_name }} account. Enter this code to continue:",
-        "If this wasn't you, change your password right away. Nobody can sign in without this code.",
+        "If this wasn't you, you can ignore this email. Nobody can sign in without this code.",
     ),
     EmailEvent.EMAIL_CHANGE: _otp_text(
         "Use this code to confirm this address as the new email for your {{ brand_name }} account:",
@@ -212,17 +212,51 @@ DEFAULT_TEXT_BODIES = {
 
 # Text bodies that shipped earlier; rows still equal to these get upgraded.
 _LEGACY_TEXT_BODIES = {
+    _otp_text(
+        "Use this code to verify your email and finish creating your {{ brand_name }} account:",
+        "If you didn't try to sign up, you can safely ignore this email.",
+    ),
     "Hi,\n\n{{ message }}\n\n{{ footer_text }}",
     "Hi {{ user_name }},\n\nWelcome to {{ brand_name }}! We're glad you're here.\n\n{{ footer_text }}",
+    # Pre-redesign OTP bodies (registration, password reset, login).
+    (
+        "Hi,\n\nYour verification code is: {{ otp_code }}\n\n"
+        "This code expires in {{ expiry_minutes }} minutes.\n\n{{ footer_text }}"
+    ),
+    (
+        "Hi,\n\nYour password reset code is: {{ otp_code }}\n\n"
+        "This code expires in {{ expiry_minutes }} minutes.\n"
+        "If you did not request this, ignore this email.\n\n{{ footer_text }}"
+    ),
+    _otp_text(
+        "Someone is signing in to your {{ brand_name }} account. Enter this code to continue:",
+        "If this wasn't you, change your password right away. Nobody can sign in without this code.",
+    ),
 }
 
 # ── HTML bodies ───────────────────────────────────────────────────────────
 DEFAULT_HTML_BODIES = {
-    EmailEvent.REGISTRATION_OTP: _otp_html(
-        eyebrow="Verify your email",
-        heading="You're almost in",
-        intro="Enter this code in the app to verify your email and finish creating your {{ brand_name }} account.",
-        closing="Didn't try to sign up? You can safely ignore this email.",
+    EmailEvent.REGISTRATION_OTP: _card(
+        _eyebrow("Verify your email"),
+        _heading("Welcome to {{ brand_name }} 💕"),
+        _paragraph(
+            "You're one step away from creating your account. "
+            "Enter this code on the sign-up screen to confirm this email is yours.",
+            "0 0 28px",
+        ),
+        _otp_code_box(),
+        _steps(
+            [
+                ("Enter the code", "Type the 6 digits on the verification screen."),
+                ("Build your profile", "Add your details, location and best photos."),
+                ("Start matching", "Meet people nearby who share your vibe."),
+            ]
+        ),
+        _note(
+            f'<strong style="color:{T["text"]};">Keep this code to yourself.</strong> '
+            "{{ brand_name }} will never call, text or email you asking for it."
+        ),
+        _small("Didn't try to sign up? You can safely ignore this email. No account will be created."),
     ),
     EmailEvent.PASSWORD_RESET_OTP: _otp_html(
         eyebrow="Password reset",
@@ -237,7 +271,7 @@ DEFAULT_HTML_BODIES = {
         eyebrow="Login verification",
         heading="Confirm it's you",
         intro="Someone is signing in to your {{ brand_name }} account. Enter this code to continue.",
-        closing="Wasn't you? Change your password right away. Nobody can sign in without this code.",
+        closing="Wasn't you? You can ignore this email. Nobody can sign in without this code.",
     ),
     EmailEvent.EMAIL_CHANGE: _otp_html(
         eyebrow="Email change",

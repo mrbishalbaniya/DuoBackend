@@ -26,6 +26,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     is_premium = serializers.SerializerMethodField()
     subscription_expires_at = serializers.SerializerMethodField()
     wallet_balance = serializers.SerializerMethodField()
+    distance_km = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
@@ -40,6 +41,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "age",
             "gender",
             "location",
+            "distance_km",
             "bio",
             "religion",
             "education",
@@ -58,6 +60,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             "pref_max_distance_km",
             "pref_relationship_goal",
             "pref_verified_only",
+            "pref_expand_distance",
+            "pref_expand_age",
             "relationship_goal",
             "location_ghost_mode",
             "location_visibility",
@@ -116,6 +120,21 @@ class ProfileSerializer(serializers.ModelSerializer):
                 data["location"] = ""
         return data
 
+    def get_distance_km(self, obj):
+        """Rounded distance from the viewer, only on discover results.
+
+        Never exact: 0 means "under 1 km", whole km up to 100, then tens of km.
+        Hidden for people in ghost mode.
+        """
+        raw = getattr(obj, "discover_distance_km", None)
+        if raw is None or obj.location_ghost_mode:
+            return None
+        if raw < 1:
+            return 0
+        if raw < 100:
+            return int(round(raw))
+        return int(round(raw / 10.0) * 10)
+
     def get_is_premium(self, obj):
         billing = self.context.get("profile_billing")
         if billing is not None:
@@ -160,12 +179,42 @@ class ProfileSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Friend ids must be integers.") from exc
         return list(dict.fromkeys(cleaned))
 
+    PREF_AGE_LIMITS = (18, 80)
+    PREF_DISTANCE_LIMITS = (1, 500)
+
+    def _validate_discovery_prefs(self, attrs, instance):
+        """Keep discovery filters in range and the age range ordered."""
+        low, high = self.PREF_AGE_LIMITS
+        for field in ("pref_age_min", "pref_age_max"):
+            if field in attrs and not low <= attrs[field] <= high:
+                raise serializers.ValidationError({field: f"Age must be between {low} and {high}."})
+
+        if "pref_age_min" in attrs or "pref_age_max" in attrs:
+            age_min = attrs.get("pref_age_min", getattr(instance, "pref_age_min", low))
+            age_max = attrs.get("pref_age_max", getattr(instance, "pref_age_max", high))
+            if age_min > age_max:
+                raise serializers.ValidationError(
+                    {"pref_age_min": "Minimum age can't be higher than maximum age."}
+                )
+
+        if "pref_max_distance_km" in attrs:
+            dist_low, dist_high = self.PREF_DISTANCE_LIMITS
+            if not dist_low <= attrs["pref_max_distance_km"] <= dist_high:
+                raise serializers.ValidationError(
+                    {"pref_max_distance_km": f"Distance must be between {dist_low} and {dist_high} km."}
+                )
+
+        if "pref_location" in attrs:
+            attrs["pref_location"] = (attrs["pref_location"] or "").strip()[:200]
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
 
         instance = getattr(self, "instance", None)
         request = self.context.get("request")
         user = getattr(request, "user", None) if request else None
+
+        self._validate_discovery_prefs(attrs, instance)
 
         # Only enforce the photo minimum when this request actually touches
         # photo fields — don't block an unrelated edit (e.g. bio) just
@@ -348,9 +397,18 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ["username", "email", "password", "full_name"]
 
     def validate_email(self, value):
-        from accounts.email_otp import normalize_email
+        from accounts.email_otp import is_email_verified_for_registration, normalize_email
 
-        return normalize_email(value)
+        email = normalize_email(value)
+        if User.objects.filter(email__iexact=email).exists():
+            raise serializers.ValidationError(
+                "An account with this email already exists. Sign in instead."
+            )
+        if not is_email_verified_for_registration(email):
+            raise serializers.ValidationError(
+                "Verify your email with the 6-digit code we sent before creating your account."
+            )
+        return email
 
     def create(self, validated_data):
         full_name = validated_data.pop("full_name", "")

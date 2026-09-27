@@ -2086,3 +2086,159 @@ a.duo-github-ota__stat-value--link:hover {
     margin-left: 0;
   }
 }
+
+/* ==========================================================================
+   Sidebar icon hover animations
+   Each icon plays a short animation matched to its meaning when its row is
+   hovered or keyboard-focused. Unknown icons get a gentle bounce.
+   ========================================================================== */
+
+.duo-portal-nav-link > i,
+.duo-portal-nav-group__icon {
+  display: inline-block;
+  width: 1.15em;
+  text-align: center;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+/* Default: bounce */
+.duo-portal-nav-link:hover > i,
+.duo-portal-nav-link:focus-visible > i,
+.duo-portal-nav-group__toggle:hover > .duo-portal-nav-group__icon,
+.duo-portal-nav-group__toggle:focus-visible > .duo-portal-nav-group__icon {
+  animation: duo-icon-bounce 0.55s cubic-bezier(0.28, 0.84, 0.42, 1);
+}
+
+/* Ring: notifications and mail */
+.duo-portal-nav-link:hover > i:is(.fa-bell, .fa-envelope, .fa-envelope-open-text, .fa-comment-dots, .fa-comments),
+.duo-portal-nav-link:focus-visible > i:is(.fa-bell, .fa-envelope, .fa-envelope-open-text, .fa-comment-dots, .fa-comments),
+.duo-portal-nav-group__toggle:hover > .duo-portal-nav-group__icon:is(.fa-bell, .fa-comments),
+.duo-portal-nav-group__toggle:focus-visible > .duo-portal-nav-group__icon:is(.fa-bell, .fa-comments) {
+  transform-origin: 50% 10%;
+  animation: duo-icon-ring 0.8s ease-in-out;
+}
+
+/* Beat: matching */
+.duo-portal-nav-link:hover > i:is(.fa-heart, .fa-fire, .fa-hand-pointer),
+.duo-portal-nav-link:focus-visible > i:is(.fa-heart, .fa-fire, .fa-hand-pointer),
+.duo-portal-nav-group__toggle:hover > .duo-portal-nav-group__icon.fa-heart,
+.duo-portal-nav-group__toggle:focus-visible > .duo-portal-nav-group__icon.fa-heart {
+  animation: duo-icon-beat 0.8s ease-in-out;
+}
+
+/* Spin: settings and system */
+.duo-portal-nav-link:hover > i:is(.fa-cog, .fa-gear, .fa-sliders-h, .fa-sliders, .fa-server, .fa-gauge-high),
+.duo-portal-nav-link:focus-visible > i:is(.fa-cog, .fa-gear, .fa-sliders-h, .fa-sliders, .fa-server, .fa-gauge-high),
+.duo-portal-nav-group__toggle:hover > .duo-portal-nav-group__icon:is(.fa-server, .fa-gauge-high, .fa-cog),
+.duo-portal-nav-group__toggle:focus-visible > .duo-portal-nav-group__icon:is(.fa-server, .fa-gauge-high, .fa-cog) {
+  animation: duo-icon-spin 0.7s cubic-bezier(0.45, 0, 0.2, 1);
+}
+
+/* Wiggle: security and warnings */
+.duo-portal-nav-link:hover > i:is([class*="fa-shield"], .fa-lock, .fa-key, .fa-exclamation-triangle, .fa-fingerprint),
+.duo-portal-nav-link:focus-visible > i:is([class*="fa-shield"], .fa-lock, .fa-key, .fa-exclamation-triangle, .fa-fingerprint),
+.duo-portal-nav-group__toggle:hover > .duo-portal-nav-group__icon[class*="fa-shield"],
+.duo-portal-nav-group__toggle:focus-visible > .duo-portal-nav-group__icon[class*="fa-shield"] {
+  animation: duo-icon-wiggle 0.6s ease-in-out;
+}
+
+/* Pop: money and rewards */
+.duo-portal-nav-link:hover > i:is(.fa-crown, .fa-gem, .fa-gift, .fa-wallet, .fa-credit-card, .fa-certificate, .fa-plus-circle),
+.duo-portal-nav-link:focus-visible > i:is(.fa-crown, .fa-gem, .fa-gift, .fa-wallet, .fa-credit-card, .fa-certificate, .fa-plus-circle),
+.duo-portal-nav-group__toggle:hover > .duo-portal-nav-group__icon:is(.fa-crown, .fa-wallet),
+.duo-portal-nav-group__toggle:focus-visible > .duo-portal-nav-group__icon:is(.fa-crown, .fa-wallet) {
+  animation: duo-icon-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Rise: analytics */
+.duo-portal-nav-link:hover > i:is([class*="fa-chart"], .fa-bolt),
+.duo-portal-nav-link:focus-visible > i:is([class*="fa-chart"], .fa-bolt),
+.duo-portal-nav-group__toggle:hover > .duo-portal-nav-group__icon[class*="fa-chart"],
+.duo-portal-nav-group__toggle:focus-visible > .duo-portal-nav-group__icon[class*="fa-chart"] {
+  animation: duo-icon-rise 0.6s ease-out;
+}
+
+/* Fly: sending */
+.duo-portal-nav-link:hover > i.fa-paper-plane,
+.duo-portal-nav-link:focus-visible > i.fa-paper-plane {
+  animation: duo-icon-fly 0.7s ease-in-out;
+}
+
+/* Peek: visitors */
+.duo-portal-nav-link:hover > i:is(.fa-eye, .fa-user-check, .fa-id-card, .fa-user),
+.duo-portal-nav-link:focus-visible > i:is(.fa-eye, .fa-user-check, .fa-id-card, .fa-user) {
+  animation: duo-icon-peek 0.6s ease-in-out;
+}
+
+@keyframes duo-icon-bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-4px) scale(1.08); }
+  55% { transform: translateY(0) scale(0.96); }
+  75% { transform: translateY(-1.5px) scale(1.02); }
+}
+
+@keyframes duo-icon-ring {
+  0%, 100% { transform: rotate(0); }
+  15% { transform: rotate(16deg); }
+  30% { transform: rotate(-14deg); }
+  45% { transform: rotate(10deg); }
+  60% { transform: rotate(-7deg); }
+  75% { transform: rotate(3deg); }
+}
+
+@keyframes duo-icon-beat {
+  0%, 100% { transform: scale(1); }
+  15% { transform: scale(1.25); }
+  30% { transform: scale(1); }
+  45% { transform: scale(1.18); }
+  60% { transform: scale(1); }
+}
+
+@keyframes duo-icon-spin {
+  from { transform: rotate(0); }
+  to { transform: rotate(180deg); }
+}
+
+@keyframes duo-icon-wiggle {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  20% { transform: translateX(-2px) rotate(-8deg); }
+  40% { transform: translateX(2px) rotate(8deg); }
+  60% { transform: translateX(-1.5px) rotate(-5deg); }
+  80% { transform: translateX(1px) rotate(3deg); }
+}
+
+@keyframes duo-icon-pop {
+  0% { transform: scale(1) rotate(0); }
+  40% { transform: scale(1.28) rotate(-8deg); }
+  70% { transform: scale(0.95) rotate(4deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+@keyframes duo-icon-rise {
+  0% { transform: translateY(0); clip-path: inset(0 0 0 0); }
+  35% { transform: translateY(3px); clip-path: inset(40% 0 0 0); }
+  70% { transform: translateY(-2px); clip-path: inset(0 0 0 0); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes duo-icon-fly {
+  0% { transform: translate(0, 0); opacity: 1; }
+  45% { transform: translate(10px, -8px) rotate(8deg); opacity: 0; }
+  46% { transform: translate(-10px, 8px); opacity: 0; }
+  100% { transform: translate(0, 0); opacity: 1; }
+}
+
+@keyframes duo-icon-peek {
+  0%, 100% { transform: scaleY(1); }
+  25% { transform: scaleY(0.15); }
+  50% { transform: scaleY(1); }
+  70% { transform: translateX(2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .duo-portal-nav-link > i,
+  .duo-portal-nav-group__icon {
+    animation: none !important;
+  }
+}

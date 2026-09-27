@@ -21,6 +21,28 @@ class Swipe(models.Model):
         return f"{self.from_user.username} → {self.action} → {self.to_user.username}"
 
 
+class LikeEvent(models.Model):
+    """One successful Like, kept for the rolling free-tier like quota.
+
+    Separate from ``Swipe`` (one row per pair, deleted on rewind/unlike) so a
+    Like still counts toward the limit after it is undone.
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="like_events")
+    target = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="like_events_received"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "-created_at"], name="like_event_user_created_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id} liked {self.target_id} at {self.created_at:%Y-%m-%d %H:%M}"
+
+
 class Match(models.Model):
     user1 = models.ForeignKey(User, on_delete=models.CASCADE, related_name='matches_as_user1')
     user2 = models.ForeignKey(User, on_delete=models.CASCADE, related_name='matches_as_user2')

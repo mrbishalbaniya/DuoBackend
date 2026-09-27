@@ -527,9 +527,15 @@ if _redis_url:
 
 CACHE_ENABLED = config("CACHE_ENABLED", default=True, cast=bool)
 
+# Free-tier Like quota (rolling window). An Unlimited likes pass removes it.
+FREE_LIKES_PER_WINDOW = config("FREE_LIKES_PER_WINDOW", default=100, cast=int)
+FREE_LIKES_WINDOW_HOURS = config("FREE_LIKES_WINDOW_HOURS", default=12, cast=int)
+
+# Email/password sign-ups must verify their address with a 6-digit code
+# before the account can be created. Set to false only for local debugging.
 REQUIRE_EMAIL_OTP_FOR_REGISTRATION = config(
     "REQUIRE_EMAIL_OTP_FOR_REGISTRATION",
-    default=not DEBUG,
+    default=True,
     cast=bool,
 )
 
@@ -812,7 +818,10 @@ JAZZMIN_SETTINGS = {
         "chat.Conversation": "fas fa-comment-dots",
         "chat.Message": "fas fa-envelope",
         "subscriptions": "fas fa-crown",
-        "subscriptions.SubscriptionPlan": "fas fa-gem",
+        "subscriptions.WhoLikedYouPlan": "fas fa-heart",
+        "subscriptions.VisitedYouPlan": "fas fa-eye",
+        "subscriptions.RewindPlan": "fas fa-rotate-left",
+        "subscriptions.UnlimitedLikesPlan": "fas fa-infinity",
         "subscriptions.SubscriptionPayment": "fas fa-credit-card",
         "subscriptions.Wallet": "fas fa-wallet",
         "subscriptions.WalletTransaction": "fas fa-exchange-alt",

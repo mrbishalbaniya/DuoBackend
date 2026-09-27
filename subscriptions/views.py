@@ -3,7 +3,7 @@ import logging
 from django.conf import settings
 from django.http import HttpResponseRedirect
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from duo_project.runtime_config import get_integration_settings
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -33,10 +33,13 @@ from .serializers import (
     WalletTransactionSerializer,
 )
 from .services import (
+    FEATURES,
     activate_payment,
     get_active_subscription,
+    get_feature_access,
     get_subscription_plan,
     get_subscription_plans,
+    normalize_feature,
 )
 from .throttling import GiftCardRedeemThrottle
 
@@ -65,14 +68,28 @@ class SubscriptionPlanView(APIView):
 
     @extend_schema(
         tags=["Subscriptions"],
-        summary="List Duo Premium plans",
+        summary="List Duo Premium plans for one premium feature",
+        parameters=[
+            OpenApiParameter(
+                name="feature",
+                description="Premium feature the plans unlock. Defaults to who_liked_you.",
+                required=False,
+                type=str,
+                enum=list(FEATURES),
+            ),
+        ],
         responses={200: SubscriptionPlanSerializer(many=True)},
     )
     def get(self, request):
+        try:
+            feature = normalize_feature(request.query_params.get("feature"))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
         return Response(
             api_cache.get_or_set(
-                cache_keys.subscription_plans(),
-                get_subscription_plans,
+                cache_keys.subscription_plans(feature),
+                lambda: get_subscription_plans(feature),
                 cache_ttl.SUBSCRIPTION_PLANS,
                 label="subscription_plans",
             )
@@ -98,6 +115,7 @@ class SubscriptionStatusView(APIView):
                 "is_premium": active is not None,
                 "expires_at": active.expires_at if active else None,
                 "plan": active_plan,
+                "features": get_feature_access(request.user),
             }
 
         return Response(

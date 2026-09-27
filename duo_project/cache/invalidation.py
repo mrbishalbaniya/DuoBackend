@@ -38,7 +38,10 @@ def invalidate_profile_caches(profile_id: int, user_id: int, *, reason: str = ""
 
 
 def invalidate_subscription_plans() -> None:
-    api_cache.delete(keys.subscription_plans(), label="subscription_plans")
+    from subscriptions.models import SubscriptionPlan
+
+    for feature in SubscriptionPlan.FEATURES:
+        api_cache.delete(keys.subscription_plans(feature), label="subscription_plans")
 
 
 def invalidate_conversation_for_users(conversation_id: int, user_ids: list[int], *, reason: str = "") -> None:

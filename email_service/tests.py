@@ -34,6 +34,38 @@ class EmailRenderingTests(TestCase):
         self.assertIn("123456", text)
         self.assertIn("123456", html)
 
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=False)
+    def test_queued_template_email_is_rendered_by_worker(self):
+        """The worker must receive the caller's args, not the pre-rendered
+        subject, or it skips the template and sends an empty body."""
+        from unittest.mock import patch
+
+        from email_service.defaults import ensure_default_templates
+        from email_service.providers import DeliveryResult
+        from email_service.service import send_email
+
+        ensure_default_templates()
+        with patch("duo_project.tasks.email.send_email_task.delay") as delay:
+            send_email(
+                event=EmailEvent.PASSWORD_RESET_OTP,
+                to="someone@example.com",
+                context={"otp_code": "654321", "expiry_minutes": 10},
+                queue=True,
+            )
+        queued = delay.call_args.kwargs
+        self.assertIsNone(queued["subject"])
+
+        from duo_project.tasks.email import send_email_task
+
+        with patch(
+            "email_service.service._deliver", return_value=DeliveryResult(True, "smtp")
+        ) as deliver:
+            send_email_task(**queued)
+        sent = deliver.call_args.kwargs
+        self.assertIn("654321", sent["subject"])
+        self.assertIn("654321", sent["text_body"])
+        self.assertIn("654321", sent["html_body"])
+
     def test_validate_recipients_rejects_invalid(self):
         self.assertEqual(_validate_recipients(["bad-email", "good@example.com"]), ["good@example.com"])
 

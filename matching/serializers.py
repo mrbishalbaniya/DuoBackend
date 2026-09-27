@@ -9,6 +9,10 @@ class SwipeSerializer(serializers.Serializer):
     action = serializers.ChoiceField(choices=['LIKE', 'SKIP', 'SUPERLIKE'])
 
 
+class RewindSerializer(serializers.Serializer):
+    to_user_id = serializers.IntegerField(required=False, min_value=1)
+
+
 class UnlikeSerializer(serializers.Serializer):
     to_user_id = serializers.IntegerField()
 

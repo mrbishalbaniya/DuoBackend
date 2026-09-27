@@ -39,4 +39,8 @@ app.conf.beat_schedule = {
         "task": "duo_project.tasks.maintenance.prune_expired_jwt_blacklist",
         "schedule": crontab(hour=4, minute=30),
     },
+    "maintenance-prune-like-events": {
+        "task": "duo_project.tasks.maintenance.prune_like_events",
+        "schedule": crontab(hour=4, minute=50),
+    },
 }

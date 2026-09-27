@@ -105,3 +105,13 @@ def prune_expired_jwt_blacklist() -> int:
     total = blacklisted + outstanding
     logger.info("maintenance_prune_jwt_blacklist deleted=%s", total)
     return total
+
+
+@shared_task(name="duo_project.tasks.maintenance.prune_like_events")
+def prune_like_events() -> int:
+    """Drop Like records too old to affect any rolling Like quota."""
+    from matching.likes import prune_like_events as prune
+
+    deleted = prune()
+    logger.info("maintenance_prune_like_events deleted=%s", deleted)
+    return deleted
