@@ -71,7 +71,33 @@ def get_ice_servers() -> list[dict]:
     return servers
 
 
+STALE_ACTIVE_CALL_HOURS = 4
+
+
+def expire_stale_calls(user_id: int) -> None:
+    """Close calls left open by crashed clients so users aren't stuck as busy."""
+    now = timezone.now()
+    base = CallSession.objects.filter(models.Q(caller_id=user_id) | models.Q(callee_id=user_id))
+    stale_ringing = base.filter(
+        status__in={CallSession.STATUS_RINGING, CallSession.STATUS_INITIATING},
+    ).filter(
+        models.Q(ring_timeout_at__lt=now)
+        | models.Q(ring_timeout_at__isnull=True, started_at__lt=now - timedelta(seconds=RING_TIMEOUT_SECONDS * 2))
+    )
+    for call in stale_ringing.select_related("caller", "conversation"):
+        finalize_call(call, status=CallSession.STATUS_MISSED, end_reason="timeout")
+        _broadcast_call_event(call, "call_missed", {"reason": "timeout"})
+
+    stale_active = base.filter(
+        status=CallSession.STATUS_ACTIVE,
+        answered_at__lt=now - timedelta(hours=STALE_ACTIVE_CALL_HOURS),
+    )
+    for call in stale_active.select_related("caller", "conversation"):
+        finalize_call(call, status=CallSession.STATUS_ENDED, end_reason="stale")
+
+
 def user_has_active_call(user_id: int, exclude_call_id: int | None = None) -> bool:
+    expire_stale_calls(user_id)
     qs = CallSession.objects.filter(status__in=ACTIVE_CALL_STATUSES).filter(
         models.Q(caller_id=user_id) | models.Q(callee_id=user_id)
     )
@@ -294,6 +320,11 @@ def finalize_call(call: CallSession, *, status: str, end_reason: str) -> CallSes
     clear_call_presence(call.caller_id)
     clear_call_presence(call.callee_id)
 
+    try:
+        create_call_log_message(call)
+    except Exception:
+        logger.exception("call_log_message_failed call_id=%s", call.public_id)
+
     if status == CallSession.STATUS_MISSED:
         from notifications.dispatch import dispatch_missed_call_push
 
@@ -307,6 +338,70 @@ def finalize_call(call: CallSession, *, status: str, end_reason: str) -> CallSes
         )
 
     return call
+
+
+CALL_LOG_EVENT_CODES = {
+    CallSession.STATUS_ENDED: "CALL_ENDED",
+    CallSession.STATUS_MISSED: "CALL_MISSED",
+    CallSession.STATUS_REJECTED: "CALL_DECLINED",
+    CallSession.STATUS_CANCELLED: "CALL_CANCELLED",
+    CallSession.STATUS_BUSY: "CALL_BUSY",
+    CallSession.STATUS_FAILED: "CALL_FAILED",
+}
+
+
+def _format_call_duration(seconds: int) -> str:
+    seconds = max(0, int(seconds or 0))
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def format_call_log_content(call: CallSession) -> str:
+    kind = "video call" if call.call_type == CallSession.TYPE_VIDEO else "voice call"
+    status = call.status
+    if status == CallSession.STATUS_ENDED and call.answered_at:
+        return f"{kind.capitalize()} \u00b7 {_format_call_duration(call.duration_seconds)}"
+    if status == CallSession.STATUS_REJECTED:
+        return f"{kind.capitalize()} declined"
+    if status == CallSession.STATUS_CANCELLED:
+        return f"Cancelled {kind}"
+    if status == CallSession.STATUS_BUSY:
+        return f"Missed {kind} \u00b7 busy"
+    if status == CallSession.STATUS_FAILED:
+        return f"{kind.capitalize()} failed"
+    return f"Missed {kind}"
+
+
+def create_call_log_message(call: CallSession):
+    """Add a system message to the chat so both people see the call history."""
+    from chat.models import Message
+    from chat.realtime import broadcast_chat_message
+    from chat.services import touch_conversation_activity
+
+    event_code = CALL_LOG_EVENT_CODES.get(call.status)
+    if not event_code:
+        return None
+    msg = Message.objects.create(
+        conversation=call.conversation,
+        sender_id=call.caller_id,
+        content=format_call_log_content(call),
+        message_type=Message.MESSAGE_TYPE_SYSTEM,
+        event_code=event_code,
+    )
+    touch_conversation_activity(call.conversation, msg.timestamp)
+    broadcast_chat_message(
+        call.conversation.public_id,
+        msg_id=msg.id,
+        content=msg.content,
+        image_url="",
+        sender_id=call.caller_id,
+        sender_name=_display_name(call.caller),
+        timestamp=msg.timestamp.isoformat(),
+        message_type=msg.message_type,
+        event_code=event_code,
+    )
+    return msg
 
 
 def timeout_ringing_call(call_id: int) -> None:

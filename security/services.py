@@ -113,7 +113,10 @@ class SecurityService:
         phone = ""
         if profile is not None:
             phone = f"{getattr(profile, 'phone_country_code', '') or ''}{getattr(profile, 'phone_number', '') or ''}".strip()
-        phone_verified = bool(phone)
+        # There is no SMS one-time-code flow yet, so a saved number is only
+        # "added", never "verified". (Previously any saved number counted as
+        # verified, which showed a false Verified badge and locked editing.)
+        phone_verified = False
         has_password = user.has_usable_password()
         trusted = False
         if current_device_id:

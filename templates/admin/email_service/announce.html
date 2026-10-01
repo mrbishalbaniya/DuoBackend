@@ -1,0 +1,49 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; <a href="{% url 'admin:email_service_emailtemplate_changelist' %}">Email templates</a>
+  &rsaquo; Send announcement
+</div>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:720px;">
+  <p style="color:#6b7280;margin:0 0 18px;">
+    Sends the <strong>Admin announcement</strong> template to the chosen members. Send a test to yourself first.
+  </p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="errornote">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+
+    <fieldset class="module aligned">
+      {% for field in form %}
+        <div class="form-row{% if field.errors %} errors{% endif %}">
+          {{ field.errors }}
+          <div>
+            {{ field.label_tag }}
+            {{ field }}
+            {% if field.name == "audience" %}
+              <div class="help" style="margin-top:6px;">
+                {% for key, count in recipient_counts.items %}
+                  <span style="display:inline-block;margin-right:12px;">{{ key|capfirst }}: <strong>{{ count }}</strong></span>
+                {% endfor %}
+              </div>
+            {% elif field.help_text %}
+              <div class="help">{{ field.help_text }}</div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </fieldset>
+
+    <div class="submit-row" style="display:flex;gap:10px;justify-content:flex-end;">
+      <input type="submit" name="send_test" value="Send test to me" class="button">
+      <input type="submit" name="send_all" value="Send to members" class="default"
+             onclick="return confirm('Send this announcement to the selected members? This can\'t be undone.');">
+    </div>
+  </form>
+</div>
+{% endblock %}

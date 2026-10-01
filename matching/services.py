@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import random
 
 from django.contrib.auth.models import User
 from django.db import transaction
@@ -12,6 +11,7 @@ from django.db.models import Q
 from chat.models import Conversation
 from chat.services import users_are_blocked
 from duo_project.cache.invalidation import invalidate_user_caches
+from matching.compatibility import compute_compatibility
 from matching.models import Match, Swipe
 
 logger = logging.getLogger("duo.matching")
@@ -37,22 +37,23 @@ def ensure_mutual_likes(user_a: User, user_b: User) -> None:
     )
 
 
-def _default_scores(compatibility_score: int | None = None) -> dict:
-    values = random.randint(75, 98)
-    lifestyle = random.randint(60, 95)
-    career = random.randint(65, 95)
-    hobbies = random.randint(50, 90)
-    overall = compatibility_score
-    if overall is None:
-        overall = int((values * 0.35) + (lifestyle * 0.25) + (career * 0.25) + (hobbies * 0.15))
-    overall = max(0, min(100, int(overall)))
-    return {
-        "compatibility_score": overall,
-        "values_score": values,
-        "lifestyle_score": lifestyle,
-        "career_score": career,
-        "hobbies_score": hobbies,
-    }
+def match_fields(user1: User, user2: User, compatibility_score: int | None = None) -> dict:
+    """Compatibility scores and insights for a new match, computed from both profiles.
+
+    An admin-chosen overall score (admin "create match" form) overrides only the
+    overall number; the four dimension scores are always computed.
+    """
+    p1 = getattr(user1, "profile", None)
+    p2 = getattr(user2, "profile", None)
+    if p1 is None or p2 is None:
+        fields = {"compatibility_score": 50, "values_score": 50, "lifestyle_score": 50, "career_score": 50,
+                  "hobbies_score": 50, "shared_interests": [], "spark_factors": [],
+                  "vision_insight": "", "communication_insight": ""}
+    else:
+        fields = compute_compatibility(p1, p2).as_match_fields()
+    if compatibility_score is not None:
+        fields["compatibility_score"] = max(0, min(100, int(compatibility_score)))
+    return fields
 
 
 def create_match_between(
@@ -80,54 +81,13 @@ def create_match_between(
         Conversation.objects.get_or_create(match=existing)
         return existing, False
 
-    scores = _default_scores(compatibility_score)
-    all_interests = [
-        "Hiking",
-        "Reading",
-        "Cooking",
-        "Travel",
-        "Music",
-        "Yoga",
-        "Photography",
-        "Dancing",
-        "Classic Rock",
-        "Philanthropy",
-    ]
-    shared = random.sample(all_interests, random.randint(3, 6))
-    sparks = [
-        "Both passionate about adventure travel and mountains",
-        "Strong mutual focus on family-oriented celebrations",
-        "Shared appreciation for traditional cultural values",
-        "Admin-curated pairing for a meaningful connection",
-    ]
-    p1_name = getattr(getattr(user1, "profile", None), "full_name", None) or user1.username
-    p2_name = getattr(getattr(user2, "profile", None), "full_name", None) or user2.username
+    fields = match_fields(user1, user2, compatibility_score)
 
     with transaction.atomic():
         if ensure_likes:
             ensure_mutual_likes(user1, user2)
 
-        match = Match.objects.create(
-            user1=user1,
-            user2=user2,
-            compatibility_score=scores["compatibility_score"],
-            values_score=scores["values_score"],
-            lifestyle_score=scores["lifestyle_score"],
-            career_score=scores["career_score"],
-            hobbies_score=scores["hobbies_score"],
-            spark_factors=random.sample(sparks, 2),
-            shared_interests=shared,
-            vision_insight=(
-                "Both express a desire for an urban lifestyle while maintaining strong ties "
-                "to traditional ancestral homes during festivals. This alignment ensures no "
-                "geographical friction in the coming years."
-            ),
-            communication_insight=(
-                f"{p1_name} values directness and logic, while {p2_name} prioritizes emotional "
-                "resonance. This balanced pairing often results in highly effective problem-solving "
-                "in partnerships."
-            ),
-        )
+        match = Match.objects.create(user1=user1, user2=user2, **fields)
         Conversation.objects.get_or_create(match=match)
 
     invalidate_user_caches(user1.id, reason="admin_match")

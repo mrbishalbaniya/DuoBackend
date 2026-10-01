@@ -37,4 +37,10 @@ def preference_payload(prefs: NotificationPreference) -> dict:
         "payment_enabled": prefs.payment_enabled,
         "sound_enabled": prefs.sound_enabled,
         "vibration_enabled": prefs.vibration_enabled,
+        "email_enabled": prefs.email_enabled,
+        "email_matches": prefs.email_matches,
+        "email_payments": prefs.email_payments,
+        "email_verification": prefs.email_verification,
+        "email_announcements": prefs.email_announcements,
+        "email_marketing": prefs.email_marketing,
     }

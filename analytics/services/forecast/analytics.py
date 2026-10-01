@@ -69,10 +69,6 @@ def get_forecast_analytics(filters: dict | None = None) -> dict:
             "renewal_likelihood_pct": renewal_likelihood,
             "fraud_risk_score": fraud.get("risk_score", 0),
         },
-        "trending_features": trending[:6] or [
-            {"feature": "super_like", "growth_pct": 0},
-            {"feature": "voice_messages", "growth_pct": 0},
-            {"feature": "profile_verification", "growth_pct": 0},
-        ],
+        "trending_features": trending[:6],
         "model_version": "heuristic-v2",
     }

@@ -182,20 +182,60 @@ class Profile(models.Model):
             return viewer_id in selected
         return True
 
+    # Personality / lifestyle words stored as bare lifestyle tags (not interests).
+    _NON_INTEREST_TAGS = {"introvert", "ambivert", "extrovert", "active", "balanced", "relaxed"}
+
+    def profile_checklist(self) -> list[dict]:
+        """What makes a profile complete, grouped by the profile page sections.
+
+        Each item: {"section", "key", "label", "done"}. Section names match the
+        profile page (frontend ProfileEditSection) so the UI can open that editor.
+        """
+        import json
+
+        try:
+            extra = json.loads(self.pref_values) if self.pref_values else {}
+            if not isinstance(extra, dict):
+                extra = {}
+        except (TypeError, ValueError):
+            extra = {}
+
+        tags = [str(t).strip() for t in (self.lifestyle_tags or []) if str(t).strip()]
+        lower_tags = [t.lower() for t in tags]
+        interests = [
+            t for t in lower_tags if ":" not in t and t not in self._NON_INTEREST_TAGS
+        ]
+        habits = [t for t in lower_tags if t.startswith(("smoking:", "drinking:", "exercise:"))]
+        photos = [u for u in ([self.photo_url] + list(self.photo_urls or [])) if u]
+        photo_count = len(dict.fromkeys(photos))
+
+        def item(section, key, label, done):
+            return {"section": section, "key": key, "label": label, "done": bool(done)}
+
+        return [
+            item("Photos", "photo", "Profile photo", self.photo_url),
+            item("Photos", "photos_3", "At least 3 photos", photo_count >= 3),
+            item("Personal", "full_name", "Full name", self.full_name),
+            item("Personal", "birth", "Date of birth", self.age or extra.get("dateOfBirth")),
+            item("Personal", "gender", "Gender", self.gender),
+            item("Personal", "height", "Height", extra.get("height")),
+            item("Personal", "relationship_goal", "Relationship goal", self.relationship_goal),
+            item("Religion & Background", "religion", "Religion", self.religion),
+            item("Religion & Background", "languages", "Languages", extra.get("languages")),
+            item("Education & Career", "education_level", "Education level", extra.get("educationLevel")),
+            item("Education & Career", "occupation", "Occupation", self.occupation),
+            item("Lifestyle & Interests", "interests", "At least 3 interests", len(interests) >= 3),
+            item("Lifestyle & Interests", "habits", "Lifestyle habits", habits),
+            item("About", "bio", "Bio", (self.bio or "").strip()),
+            item("About", "looking_for", "Who you're looking for", (extra.get("lookingForText") or "").strip()),
+            item("Verification", "verified", "Selfie verification", self.is_verified),
+        ]
+
     @property
     def profile_completeness(self):
-        fields = [
-            self.full_name,
-            self.age,
-            self.gender,
-            self.bio,
-            self.religion,
-            self.education,
-            self.occupation,
-            self.photo_url,
-        ]
-        filled = sum(1 for f in fields if f)
-        return int(filled / len(fields) * 100)
+        checklist = self.profile_checklist()
+        done = sum(1 for entry in checklist if entry["done"])
+        return int(round(done / len(checklist) * 100))
 
     def __str__(self):
         return f"{self.full_name or self.user.username} ({self.user.email})"

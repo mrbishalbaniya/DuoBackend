@@ -97,6 +97,20 @@ class AuthFlowTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_login_accepts_email_for_custom_username_account(self):
+        from django.contrib.auth import get_user_model
+
+        get_user_model().objects.create_user(
+            username="coolname", email="person@example.com", password="StrongPass!234"
+        )
+        for identifier in ("person@example.com", "Person@Example.com", "CoolName"):
+            response = self.client.post(
+                "/api/auth/login/",
+                {"username": identifier, "password": "StrongPass!234"},
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK, identifier)
+
     def test_google_only_account_can_set_password_via_reset(self):
         from unittest.mock import patch
 
@@ -263,3 +277,102 @@ class ProfileAgeGateTests(APITestCase):
     def test_18_and_over_accepted(self):
         response = self.client.put("/api/profiles/me/", {"age": 18}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class UsernameTests(APITestCase):
+    def test_generate_username_uses_name(self):
+        from accounts.usernames import generate_username
+
+        name = generate_username("Bishal Baniya", "x@example.com")
+        self.assertRegex(name, r"^bishal\.baniya\d{4}$")
+
+    def test_user_can_change_username(self):
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        user = User.objects.create_user(username="first.name1234", email="a@example.com", password="StrongPass!234")
+        User.objects.create_user(username="taken.name", email="b@example.com", password="StrongPass!234")
+        self.client.force_authenticate(user)
+
+        ok = self.client.patch("/api/auth/me/username/", {"username": "@New.Name_1"}, format="json")
+        self.assertEqual(ok.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(user.username, "new.name_1")
+
+        for bad in ("Taken.Name", "ab", "bad name", ".dot"):
+            resp = self.client.patch("/api/auth/me/username/", {"username": bad}, format="json")
+            self.assertEqual(resp.status_code, 400, bad)
+
+
+class DuplicateEmailLoginTests(APITestCase):
+    def test_login_prefers_onboarded_duplicate(self):
+        from django.contrib.auth import get_user_model
+
+        from accounts.models import Profile
+
+        User = get_user_model()
+        half = User.objects.create_user(username="half.done1111", email="dup@example.com", password="StrongPass!234")
+        full = User.objects.create_user(username="full.done2222", email="dup@example.com", password="StrongPass!234")
+        Profile.objects.get_or_create(user=half)
+        profile, _ = Profile.objects.get_or_create(user=full)
+        profile.is_onboarded = True
+        profile.save()
+
+        resp = self.client.post(
+            "/api/auth/login/",
+            {"username": "dup@example.com", "password": "StrongPass!234"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["user"]["username"], "full.done2222")
+
+
+class PublicProfilePrivacyTests(APITestCase):
+    def test_other_users_do_not_see_private_details(self):
+        import json
+
+        from django.contrib.auth import get_user_model
+        from django.test import RequestFactory
+
+        from accounts.models import Profile
+        from accounts.serializers import ProfileSerializer
+
+        User = get_user_model()
+        owner = User.objects.create_user(username="owner.p1", email="o@example.com", password="StrongPass!234")
+        viewer = User.objects.create_user(username="viewer.p1", email="v@example.com", password="StrongPass!234")
+        profile, _ = Profile.objects.get_or_create(user=owner)
+        profile.pref_values = json.dumps({
+            "height": "168 cm", "caste": "Brahmin", "languages": ["Nepali"],
+            "dateOfBirth": "2000-01-01", "birthTime": "05:30", "gotra": "Kashyap",
+            "monthlyIncome": "50k_100k", "preferredCaste": "Chhetri",
+        })
+        profile.save()
+
+        request = RequestFactory().get("/")
+        request.user = viewer
+        data = ProfileSerializer(profile, context={"request": request}).data
+        public = json.loads(data["pref_values"])
+        self.assertEqual(public, {"height": "168 cm", "caste": "Brahmin", "languages": ["Nepali"]})
+        self.assertNotIn("profile_checklist", data)
+
+        request.user = owner
+        own = json.loads(ProfileSerializer(profile, context={"request": request}).data["pref_values"])
+        self.assertEqual(own["birthTime"], "05:30")
+
+
+class OwnAccountDataTests(APITestCase):
+    def test_me_returns_own_phone_after_update(self):
+        from django.contrib.auth import get_user_model
+
+        from accounts.models import Profile
+
+        user = get_user_model().objects.create_user(username="phone.owner", email="po@example.com", password="StrongPass!234")
+        Profile.objects.get_or_create(user=user)
+        self.client.force_authenticate(user)
+        saved = self.client.put(
+            "/api/profiles/me/", {"phone_country_code": "+977", "phone_number": "9812345678"}, format="json"
+        )
+        self.assertEqual(saved.status_code, 200)
+        profile = self.client.get("/api/auth/me/").json()["profile"]
+        self.assertEqual(profile["phone_number"], "9812345678")
+        self.assertEqual(profile["phone_country_code"], "+977")

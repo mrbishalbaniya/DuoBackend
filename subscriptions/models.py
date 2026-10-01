@@ -167,11 +167,13 @@ class WalletTransaction(models.Model):
     ]
 
     PAYMENT_METHOD_ESEWA = "esewa"
+    PAYMENT_METHOD_STRIPE = "stripe"
     PAYMENT_METHOD_WALLET = "wallet"
     PAYMENT_METHOD_GIFT = "gift"
 
     PAYMENT_METHOD_CHOICES = [
         (PAYMENT_METHOD_ESEWA, "eSewa"),
+        (PAYMENT_METHOD_STRIPE, "Card (Stripe)"),
         (PAYMENT_METHOD_WALLET, "Wallet balance"),
         (PAYMENT_METHOD_GIFT, "Gift card"),
     ]
@@ -232,6 +234,13 @@ class WalletTopUp(models.Model):
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
     esewa_ref_id = models.CharField(max_length=64, blank=True, default="")
     esewa_transaction_code = models.CharField(max_length=64, blank=True, default="")
+    provider = models.CharField(
+        max_length=16,
+        choices=[("esewa", "eSewa"), ("stripe", "Stripe")],
+        default="esewa",
+    )
+    stripe_session_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    stripe_payment_intent = models.CharField(max_length=255, blank=True, default="")
     paid_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

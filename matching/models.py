@@ -59,6 +59,11 @@ class Match(models.Model):
     vision_insight = models.TextField(blank=True)
     communication_insight = models.TextField(blank=True)
 
+    # AI-written insight text (see matching.ai_insights); regenerated when inputs change.
+    ai_insights = models.JSONField(null=True, blank=True)
+    ai_insights_key = models.CharField(max_length=64, blank=True, default="")
+    ai_insights_generated_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         verbose_name = "match"
         verbose_name_plural = "matches"
@@ -93,3 +98,20 @@ class ProfileVisit(models.Model):
 
     def __str__(self):
         return f"{self.viewer.username} viewed {self.viewed_user.username}"
+
+
+class MatchModelArtifact(models.Model):
+    """A trained version of Duo's own match model (see matching/ml)."""
+
+    name = models.CharField(max_length=40, default="duo-match")
+    payload = models.JSONField()
+    metrics = models.JSONField(default=dict, blank=True)
+    samples = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} #{self.pk} ({self.samples} samples)"

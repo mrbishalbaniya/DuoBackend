@@ -76,6 +76,6 @@ def get_user_analytics(filters: dict | None = None) -> dict:
         ],
         "behavior": {
             "avg_login_frequency": round(float(avg_logins), 2),
-            "avg_session_duration_min": 8.5,
+            "avg_session_duration_min": None,
         },
     }

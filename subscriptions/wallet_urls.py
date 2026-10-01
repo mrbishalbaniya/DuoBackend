@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     GiftCardRedeemView,
     WalletPurchaseView,
+    WalletStripeCheckoutView,
     WalletTopUpInitiateView,
     WalletTransactionDetailView,
     WalletTransactionListView,
@@ -18,6 +19,7 @@ urlpatterns = [
         name="wallet_transaction_detail",
     ),
     path("topup/initiate/", WalletTopUpInitiateView.as_view(), name="wallet_topup_initiate"),
+    path("topup/stripe/", WalletStripeCheckoutView.as_view(), name="wallet_topup_stripe"),
     path("purchase/", WalletPurchaseView.as_view(), name="wallet_purchase"),
     path("giftcard/redeem/", GiftCardRedeemView.as_view(), name="wallet_giftcard_redeem"),
 ]

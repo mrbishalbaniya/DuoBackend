@@ -347,20 +347,20 @@ def validate_liveness_step(step: str, rgb: np.ndarray, baseline: dict | None = N
     return LivenessStepResult(step=step, passed=False, score=0.0, detail="Failed")
 
 
-def aggregate_liveness_score(liveness_data: dict) -> float:
+def aggregate_liveness_score(liveness_data: dict, steps=None) -> float:
+    steps = list(steps or LIVENESS_STEPS)
     if not liveness_data:
         return 0.0
     scores = []
-    for step in LIVENESS_STEPS:
+    for step in steps:
         entry = liveness_data.get(step)
         if entry and entry.get("passed"):
             scores.append(float(entry.get("score", 0)))
         else:
             scores.append(0.0)
-    return float(sum(scores) / len(LIVENESS_STEPS)) if scores else 0.0
+    return float(sum(scores) / len(steps)) if scores else 0.0
 
 
-def all_liveness_steps_passed(liveness_data: dict) -> bool:
-    return all(
-        liveness_data.get(step, {}).get("passed") is True for step in LIVENESS_STEPS
-    )
+def all_liveness_steps_passed(liveness_data: dict, steps=None) -> bool:
+    steps = list(steps or LIVENESS_STEPS)
+    return all(liveness_data.get(step, {}).get("passed") is True for step in steps)

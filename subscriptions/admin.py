@@ -194,12 +194,19 @@ class WalletTopUpAdmin(admin.ModelAdmin):
         "transaction_uuid",
         "user",
         "total_amount",
+        "provider",
         "status",
         "paid_at",
         "created_at",
     )
-    list_filter = ("status",)
-    search_fields = ("transaction_uuid", "user__username", "esewa_ref_id")
+    list_filter = ("status", "provider")
+    search_fields = (
+        "transaction_uuid",
+        "user__username",
+        "esewa_ref_id",
+        "stripe_session_id",
+        "stripe_payment_intent",
+    )
     readonly_fields = ("created_at", "updated_at")
 
 

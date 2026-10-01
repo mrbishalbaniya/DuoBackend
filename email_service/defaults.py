@@ -13,7 +13,7 @@ from email_service.rendering import THEME, button_html
 
 # Bump when the shipped HTML changes; stored rows carrying an older marker
 # (i.e. never hand-edited in admin) are upgraded automatically.
-TEMPLATE_VERSION = "duo-template:v6"
+TEMPLATE_VERSION = "duo-template:v7"
 _MARKER = f"<!-- {TEMPLATE_VERSION} -->"
 
 DEFAULT_SUBJECTS = {
@@ -22,13 +22,13 @@ DEFAULT_SUBJECTS = {
     EmailEvent.WELCOME: "Welcome to {{ brand_name }}",
     EmailEvent.LOGIN_VERIFICATION: "{{ otp_code }} is your {{ brand_name }} login code",
     EmailEvent.EMAIL_CHANGE: "{{ otp_code }} is your code to confirm your new {{ brand_name }} email",
-    EmailEvent.SUBSCRIPTION_CONFIRMED: "Payment confirmed — {{ brand_name }}",
-    EmailEvent.SUBSCRIPTION_FAILED: "Payment issue — {{ brand_name }}",
-    EmailEvent.MATCH_NOTIFICATION: "You have a new match on {{ brand_name }}",
-    EmailEvent.ADMIN_ANNOUNCEMENT: "{{ brand_name }} announcement",
+    EmailEvent.SUBSCRIPTION_CONFIRMED: "{% if plan_name %}{{ plan_name }} is active{% else %}Payment confirmed{% endif %} — {{ brand_name }}",
+    EmailEvent.SUBSCRIPTION_FAILED: "{% if title %}{{ title }}{% else %}Payment didn't go through{% endif %} — {{ brand_name }}",
+    EmailEvent.MATCH_NOTIFICATION: "{% if match_name %}You matched with {{ match_name }}{% else %}You have a new match{% endif %} on {{ brand_name }}",
+    EmailEvent.ADMIN_ANNOUNCEMENT: "{% if title %}{{ title }}{% else %}News from {{ brand_name }}{% endif %}",
     EmailEvent.CONTACT_FORM: "New contact form message",
-    EmailEvent.ACCOUNT_STATUS: "Your {{ brand_name }} account status changed",
-    EmailEvent.GENERIC: "Message from {{ brand_name }}",
+    EmailEvent.ACCOUNT_STATUS: "{% if title %}{{ title }}{% else %}Your account status changed{% endif %} — {{ brand_name }}",
+    EmailEvent.GENERIC: "{% if title %}{{ title }}{% else %}Message from {{ brand_name }}{% endif %}",
 }
 
 # Subjects shipped before the OTP redesign. Stored rows still equal to one of
@@ -38,6 +38,15 @@ LEGACY_SUBJECTS = {
     EmailEvent.PASSWORD_RESET_OTP: "Reset your {{ brand_name }} password",
     EmailEvent.LOGIN_VERIFICATION: "{{ brand_name }} login verification",
     EmailEvent.EMAIL_CHANGE: "Confirm your new email on {{ brand_name }}",
+}
+
+PREVIOUS_SUBJECTS = {
+    EmailEvent.SUBSCRIPTION_CONFIRMED: "Payment confirmed — {{ brand_name }}",
+    EmailEvent.SUBSCRIPTION_FAILED: "Payment issue — {{ brand_name }}",
+    EmailEvent.MATCH_NOTIFICATION: "You have a new match on {{ brand_name }}",
+    EmailEvent.ADMIN_ANNOUNCEMENT: "{{ brand_name }} announcement",
+    EmailEvent.ACCOUNT_STATUS: "Your {{ brand_name }} account status changed",
+    EmailEvent.GENERIC: "Message from {{ brand_name }}",
 }
 
 # Signatures of earlier shipped HTML (before version markers existed).
@@ -116,6 +125,65 @@ def _steps(items: list[tuple[str, str]]) -> str:
         '<tr><td style="padding:0 0 12px;">'
         f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">{rows}</table>'
         "</td></tr>"
+    )
+
+
+def _details() -> str:
+    """Label/value rows from ``details`` (list of {"label", "value"} dicts)."""
+    return (
+        "{% if details %}"
+        '<tr><td style="padding:0 0 24px;">'
+        '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" '
+        f'style="border:1px solid {T["border"]};border-radius:16px;border-collapse:separate;">'
+        "{% for row in details %}"
+        "<tr>"
+        f'<td style="padding:12px 18px;font-size:14px;line-height:20px;color:{T["text_subtle"]};'
+        "{% if not forloop.last %}"
+        f'border-bottom:1px solid {T["border"]};'
+        '{% endif %}">{{ row.label }}</td>'
+        f'<td align="right" style="padding:12px 18px;font-size:14px;line-height:20px;font-weight:600;'
+        f'color:{T["text"]};'
+        "{% if not forloop.last %}"
+        f'border-bottom:1px solid {T["border"]};'
+        '{% endif %}">{{ row.value }}</td>'
+        "</tr>"
+        "{% endfor %}"
+        "</table></td></tr>"
+        "{% endif %}"
+    )
+
+
+def _optional_message() -> str:
+    return "{% if message %}" + _message_box() + "{% endif %}"
+
+
+def _optional_note() -> str:
+    return "{% if note %}" + _note("{{ note }}") + "{% endif %}"
+
+
+def _context_cta(default_label: str, default_path: str) -> str:
+    return (
+        "{% if cta_url %}"
+        + _cta("{% if cta_label %}{{ cta_label }}{% else %}Open " + default_label + "{% endif %}", "{{ cta_url }}")
+        + "{% else %}"
+        + _cta("Open " + default_label, "{{ site_url }}" + default_path)
+        + "{% endif %}"
+    )
+
+
+def _details_text() -> str:
+    return "{% for row in details %}{{ row.label }}: {{ row.value }}\n{% endfor %}"
+
+
+def _rich_text(default_intro: str) -> str:
+    return (
+        "Hi {{ user_name|default:'there' }},\n\n"
+        "{% if intro %}{{ intro }}{% else %}" + default_intro + "{% endif %}\n\n"
+        + _details_text()
+        + "{% if message %}\n{{ message }}\n{% endif %}"
+        "{% if note %}\n{{ note }}\n{% endif %}"
+        "{% if cta_url %}\n{{ cta_label|default:'Open' }}: {{ cta_url }}\n{% endif %}"
+        "\n{{ footer_text }}"
     )
 
 
@@ -201,17 +269,24 @@ DEFAULT_TEXT_BODIES = {
         "Start discovering: {{ site_url }}/discover\n\n"
         "{{ footer_text }}"
     ),
-    EmailEvent.SUBSCRIPTION_CONFIRMED: _message_text("Your payment went through. Thank you!"),
-    EmailEvent.SUBSCRIPTION_FAILED: _message_text("We couldn't process your latest payment."),
-    EmailEvent.MATCH_NOTIFICATION: _message_text("You have a new match waiting for you."),
-    EmailEvent.ADMIN_ANNOUNCEMENT: _message_text(),
+    EmailEvent.SUBSCRIPTION_CONFIRMED: _rich_text("Your payment went through. Thank you!"),
+    EmailEvent.SUBSCRIPTION_FAILED: _rich_text("We couldn't process your latest payment. You haven't been charged."),
+    EmailEvent.MATCH_NOTIFICATION: _rich_text(
+        "{% if match_name %}You and {{ match_name }} liked each other.{% else %}You have a new match waiting for you.{% endif %}"
+    ),
+    EmailEvent.ADMIN_ANNOUNCEMENT: _rich_text("Here's an update from {{ brand_name }}."),
     EmailEvent.CONTACT_FORM: "New contact form message:\n\n{{ message }}",
-    EmailEvent.ACCOUNT_STATUS: _message_text("The status of your account has changed."),
-    EmailEvent.GENERIC: _message_text(),
+    EmailEvent.ACCOUNT_STATUS: _rich_text("There's an update about your account."),
+    EmailEvent.GENERIC: _rich_text(""),
 }
 
 # Text bodies that shipped earlier; rows still equal to these get upgraded.
 _LEGACY_TEXT_BODIES = {
+    _message_text("Your payment went through. Thank you!"),
+    _message_text("We couldn't process your latest payment."),
+    _message_text("You have a new match waiting for you."),
+    _message_text(),
+    _message_text("The status of your account has changed."),
     _otp_text(
         "Use this code to verify your email and finish creating your {{ brand_name }} account:",
         "If you didn't try to sign up, you can safely ignore this email.",
@@ -295,32 +370,34 @@ DEFAULT_HTML_BODIES = {
     ),
     EmailEvent.SUBSCRIPTION_CONFIRMED: _card(
         _eyebrow("Payment confirmed", T["accent"]),
-        _heading("You're all set"),
-        _paragraph("Thank you! Your payment went through and your premium perks are active."),
-        _message_box(),
-        _cta("View my wallet", "{{ site_url }}/wallet"),
+        _heading("{% if title %}{{ title }}{% else %}You're all set{% endif %}"),
+        _paragraph("{% if intro %}{{ intro }}{% else %}Thank you! Your payment went through and your perks are active.{% endif %}"),
+        _details(),
+        _optional_message(),
+        _context_cta("my wallet", "/wallet"),
         _small("Keep this email as your receipt."),
     ),
     EmailEvent.SUBSCRIPTION_FAILED: _card(
         _eyebrow("Payment issue", T["error"]),
-        _heading("We couldn't process your payment"),
-        _paragraph("Your latest payment didn't go through. No worries, it's usually a quick fix."),
-        _message_box(),
-        _cta("Try again", "{{ site_url }}/wallet"),
-        _small("Questions about this charge? Our help center can sort it out."),
+        _heading("{% if title %}{{ title }}{% else %}Your payment didn't go through{% endif %}"),
+        _paragraph("{% if intro %}{{ intro }}{% else %}We couldn't process your latest payment. You haven't been charged.{% endif %}"),
+        _details(),
+        _optional_message(),
+        _context_cta("my wallet", "/wallet"),
+        _small("Questions about this payment? Our help center can sort it out."),
     ),
     EmailEvent.MATCH_NOTIFICATION: _card(
         _eyebrow("New match", T["love"]),
-        _heading("It's a match!"),
-        _paragraph("Someone likes you back. Don't keep them waiting."),
-        "{% if message %}" + _message_box() + "{% endif %}",
-        _cta("Say hello", "{{ site_url }}/match"),
+        _heading("{% if match_name %}You matched with {{ match_name }}!{% else %}It's a match!{% endif %}"),
+        _paragraph("{% if intro %}{{ intro }}{% else %}You both liked each other. Don't keep them waiting.{% endif %}"),
+        _optional_message(),
+        _context_cta("chat", "/chat"),
     ),
     EmailEvent.ADMIN_ANNOUNCEMENT: _card(
         _eyebrow("Announcement"),
-        _heading("News from {{ brand_name }}"),
+        _heading("{% if title %}{{ title }}{% else %}News from {{ brand_name }}{% endif %}"),
         _paragraph("{{ message|linebreaksbr }}", "0 0 28px"),
-        _cta("Open {{ brand_name }}", "{{ site_url }}"),
+        _context_cta("{{ brand_name }}", ""),
     ),
     EmailEvent.CONTACT_FORM: _card(
         _eyebrow("Contact form"),
@@ -330,13 +407,21 @@ DEFAULT_HTML_BODIES = {
     ),
     EmailEvent.ACCOUNT_STATUS: _card(
         _eyebrow("Account update", T["accent"]),
-        _heading("Your account status changed"),
-        _message_box(),
-        _cta("Contact support", "{{ site_url }}/help"),
-        _small("If you think this is a mistake, reply to support and we'll take a look."),
+        _heading("{% if title %}{{ title }}{% else %}Your account status changed{% endif %}"),
+        _paragraph("{% if intro %}{{ intro }}{% else %}There's an update about your account.{% endif %}"),
+        _details(),
+        _optional_message(),
+        _optional_note(),
+        _context_cta("{{ brand_name }}", ""),
+        _small("If you think this is a mistake, contact support and we'll take a look."),
     ),
     EmailEvent.GENERIC: _card(
-        _paragraph("{{ message|linebreaksbr }}", "0"),
+        "{% if title %}" + _heading("{{ title }}") + "{% endif %}",
+        "{% if intro %}" + _paragraph("{{ intro }}") + "{% endif %}",
+        _details(),
+        "{% if message %}" + _paragraph("{{ message|linebreaksbr }}") + "{% endif %}",
+        _optional_note(),
+        "{% if cta_url %}" + _cta("{{ cta_label|default:'Open' }}", "{{ cta_url }}") + "{% endif %}",
     ),
 }
 
@@ -380,17 +465,17 @@ def _upgrade_template(event: str) -> None:
     if html_default and _html_is_upgradable(template.html_body):
         template.html_body = html_default
         changed.append("html_body")
-    if template.subject == LEGACY_SUBJECTS.get(event):
+    if template.subject in (LEGACY_SUBJECTS.get(event), PREVIOUS_SUBJECTS.get(event)):
         template.subject = DEFAULT_SUBJECTS[event]
         changed.append("subject")
     if changed:
         template.save(update_fields=[*changed, "updated_at"])
 
-    legacy_subject = LEGACY_SUBJECTS.get(event)
-    if legacy_subject:
-        EmailEventSetting.objects.filter(event=event, subject_template=legacy_subject).update(
-            subject_template=DEFAULT_SUBJECTS[event]
-        )
+    for old_subject in (LEGACY_SUBJECTS.get(event), PREVIOUS_SUBJECTS.get(event)):
+        if old_subject:
+            EmailEventSetting.objects.filter(event=event, subject_template=old_subject).update(
+                subject_template=DEFAULT_SUBJECTS[event]
+            )
 
 
 def ensure_default_templates() -> None:

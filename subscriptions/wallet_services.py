@@ -9,6 +9,7 @@ from django.utils import timezone
 from duo_project.runtime_config import get_integration_settings
 
 from .esewa import _format_amount, generate_payment_signature
+from .stripe_gateway import create_checkout_session
 from .models import GiftCard, SubscriptionPayment, Wallet, WalletTopUp, WalletTransaction
 from .services import (
     activate_payment,
@@ -281,12 +282,79 @@ def redeem_gift_card(user, code: str) -> tuple[Wallet, GiftCard]:
     return wallet, giftcard
 
 
-def create_topup_request(user, amount: int | Decimal) -> tuple[WalletTopUp, dict]:
+def _validate_topup_amount(amount: int | Decimal) -> Decimal:
     total = Decimal(str(amount))
     if total < MIN_TOP_UP_AMOUNT:
         raise ValueError(f"Minimum coin pack is {MIN_TOP_UP_AMOUNT:.0f} coins (NPR {MIN_TOP_UP_AMOUNT:.0f}).")
     if total > MAX_TOP_UP_AMOUNT:
         raise ValueError(f"Maximum coin pack is {MAX_TOP_UP_AMOUNT:.0f} coins (NPR {MAX_TOP_UP_AMOUNT:.0f}).")
+    return total
+
+
+# Smallest pack Stripe accepts per currency (Stripe requires roughly USD 0.50 or more).
+STRIPE_MIN_AMOUNT = {"npr": Decimal("100"), "inr": Decimal("50"), "usd": Decimal("1")}
+
+
+def available_payment_methods() -> dict:
+    cfg = get_integration_settings()
+    return {
+        "esewa": bool(cfg.esewa_product_code and cfg.esewa_secret_key),
+        "stripe": bool(cfg.stripe_enabled and cfg.stripe_secret_key),
+        "stripe_currency": cfg.stripe_currency.upper(),
+        "stripe_min_amount": int(STRIPE_MIN_AMOUNT.get(cfg.stripe_currency.lower(), 1)),
+    }
+
+
+def create_stripe_topup_request(
+    user,
+    amount: int | Decimal,
+    *,
+    success_url: str,
+    cancel_url: str,
+) -> tuple[WalletTopUp, dict]:
+    """Create a pending top-up and a Stripe Checkout Session for it.
+
+    ``success_url`` may contain Stripe's ``{CHECKOUT_SESSION_ID}`` placeholder.
+    """
+    total = _validate_topup_amount(amount)
+    cfg = get_integration_settings()
+    stripe_min = STRIPE_MIN_AMOUNT.get(cfg.stripe_currency.lower(), Decimal("1"))
+    if total < stripe_min:
+        raise ValueError(f"Card payments start at {int(stripe_min):,} coins.")
+    if not (cfg.stripe_enabled and cfg.stripe_secret_key):
+        raise ValueError(
+            "Stripe is not configured. Set keys in Admin → Site settings → Stripe payments."
+        )
+
+    timestamp = timezone.now().strftime("%y%m%d-%H%M%S")
+    transaction_uuid = f"WLT-{timestamp}-{uuid.uuid4().hex[:8]}"
+    topup = WalletTopUp.objects.create(
+        user=user,
+        transaction_uuid=transaction_uuid,
+        amount=total,
+        total_amount=total,
+        status=WalletTopUp.STATUS_PENDING,
+        provider="stripe",
+    )
+
+    session = create_checkout_session(
+        secret_key=cfg.stripe_secret_key,
+        amount=total,
+        currency=cfg.stripe_currency,
+        product_name=f"{int(total):,} Duo Coins",
+        reference=transaction_uuid,
+        success_url=success_url,
+        cancel_url=cancel_url,
+        customer_email=getattr(user, "email", "") or "",
+        metadata={"user_id": str(user.pk)},
+    )
+    topup.stripe_session_id = session.get("id", "")
+    topup.save(update_fields=["stripe_session_id", "updated_at"])
+    return topup, session
+
+
+def create_topup_request(user, amount: int | Decimal) -> tuple[WalletTopUp, dict]:
+    total = _validate_topup_amount(amount)
 
     tax_amount = Decimal("0")
     service_charge = Decimal("0")
@@ -352,14 +420,19 @@ def activate_topup(
         now = timezone.now()
         locked.status = WalletTopUp.STATUS_COMPLETE
         locked.paid_at = now
-        locked.esewa_ref_id = ref_id or locked.esewa_ref_id
-        locked.esewa_transaction_code = transaction_code or locked.esewa_transaction_code
+        is_stripe = locked.provider == "stripe"
+        if is_stripe:
+            locked.stripe_payment_intent = ref_id or locked.stripe_payment_intent
+        else:
+            locked.esewa_ref_id = ref_id or locked.esewa_ref_id
+            locked.esewa_transaction_code = transaction_code or locked.esewa_transaction_code
         locked.save(
             update_fields=[
                 "status",
                 "paid_at",
                 "esewa_ref_id",
                 "esewa_transaction_code",
+                "stripe_payment_intent",
                 "updated_at",
             ]
         )
@@ -368,10 +441,17 @@ def activate_topup(
             locked.user,
             locked.total_amount,
             tx_type=WalletTransaction.TYPE_TOP_UP,
-            description=f"Purchased {int(locked.total_amount):,} coins via eSewa",
+            description=(
+                f"Purchased {int(locked.total_amount):,} coins via "
+                f"{'card (Stripe)' if is_stripe else 'eSewa'}"
+            ),
             reference_id=locked.transaction_uuid,
             total_amount=locked.total_amount,
-            payment_method=WalletTransaction.PAYMENT_METHOD_ESEWA,
+            payment_method=(
+                WalletTransaction.PAYMENT_METHOD_STRIPE
+                if is_stripe
+                else WalletTransaction.PAYMENT_METHOD_ESEWA
+            ),
         )
 
 

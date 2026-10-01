@@ -13,7 +13,7 @@ DEFAULT_BBOX = {
 
 
 class Command(BaseCommand):
-    help = "Prefetch OpenWeather grid snapshots into cache (background sync)."
+    help = "Prefetch Open-Meteo weather grid snapshots into cache (background sync)."
 
     def add_arguments(self, parser):
         parser.add_argument("--lat-min", type=float, default=DEFAULT_BBOX["lat_min"])

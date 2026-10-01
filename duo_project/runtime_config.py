@@ -40,6 +40,11 @@ class IntegrationSettings:
     esewa_mobile_client_id: str
     esewa_mobile_secret_key: str
     esewa_mobile_live: bool
+    stripe_enabled: bool
+    stripe_publishable_key: str
+    stripe_secret_key: str
+    stripe_webhook_secret: str
+    stripe_currency: str
     cloudinary_cloud_name: str
     cloudinary_api_key: str
     cloudinary_api_secret: str
@@ -205,7 +210,9 @@ def get_integration_settings() -> IntegrationSettings:
             getattr(settings, "EMAIL_SOCIAL_LINKS", ""),
         ),
         esewa_product_code=_pick_str(db("esewa_product_code"), settings.ESEWA_PRODUCT_CODE),
-        esewa_secret_key=_pick_str(db("esewa_secret_key"), settings.ESEWA_SECRET_KEY),
+        esewa_secret_key=decrypt_secret(
+            _pick_str(db("esewa_secret_key"), settings.ESEWA_SECRET_KEY)
+        ),
         esewa_form_url=_pick_str(
             db("esewa_form_url"),
             settings.ESEWA_FORM_URL,
@@ -231,6 +238,21 @@ def get_integration_settings() -> IntegrationSettings:
             if db("esewa_mobile_live") is not None
             else settings.ESEWA_MOBILE_LIVE
         ),
+        stripe_enabled=_pick_bool(
+            db("stripe_enabled"), None, bool(getattr(settings, "STRIPE_SECRET_KEY", ""))
+        ),
+        stripe_publishable_key=_pick_str(
+            db("stripe_publishable_key"), getattr(settings, "STRIPE_PUBLISHABLE_KEY", "")
+        ),
+        stripe_secret_key=decrypt_secret(
+            _pick_str(db("stripe_secret_key"), getattr(settings, "STRIPE_SECRET_KEY", ""))
+        ),
+        stripe_webhook_secret=decrypt_secret(
+            _pick_str(db("stripe_webhook_secret"), getattr(settings, "STRIPE_WEBHOOK_SECRET", ""))
+        ),
+        stripe_currency=_pick_str(
+            db("stripe_currency"), getattr(settings, "STRIPE_CURRENCY", "npr"), "npr"
+        ).lower(),
         cloudinary_cloud_name=_pick_str(
             db("cloudinary_cloud_name"), settings.CLOUDINARY_CLOUD_NAME
         ),

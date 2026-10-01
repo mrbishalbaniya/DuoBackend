@@ -65,6 +65,32 @@ ALLOWED_HOSTS = [
     if host
 ]
 
+
+def _local_ipv4_addresses() -> list[str]:
+    """This machine's LAN IPv4 addresses, so a phone on the same Wi-Fi can reach runserver."""
+    import socket
+
+    found: set[str] = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            found.add(info[4][0])
+    except OSError:
+        pass
+    try:
+        # No packets are sent; this only asks the OS which interface routes outward.
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("8.8.8.8", 80))
+            found.add(probe.getsockname()[0])
+    except OSError:
+        pass
+    return sorted(ip for ip in found if not ip.startswith(("127.", "169.254.")))
+
+
+# Local development only: accept requests addressed to this PC's LAN IP
+# (e.g. http://192.168.1.5:8000 from a physical Android phone). Never applies when DEBUG=False.
+if DEBUG:
+    ALLOWED_HOSTS += [ip for ip in _local_ipv4_addresses() if ip not in ALLOWED_HOSTS]
+
 # Render/Vercel sit behind HTTPS proxies — required for admin CSRF and secure cookies.
 if not DEBUG:
     USE_X_FORWARDED_HOST = True
@@ -487,6 +513,12 @@ ESEWA_MOBILE_SECRET_KEY = env(
 ).strip()
 ESEWA_MOBILE_LIVE = config("ESEWA_MOBILE_LIVE", default=not DEBUG, cast=bool)
 
+# Stripe (card payments for wallet top-ups). Admin site settings override these.
+STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY", default="").strip()
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="").strip()
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="").strip()
+STRIPE_CURRENCY = config("STRIPE_CURRENCY", default="npr").strip().lower()
+
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = config("EMAIL_HOST", default="smtp.gmail.com")
 EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
@@ -560,11 +592,27 @@ REST_FRAMEWORK = {
         "swipe": "120/hour",
         "calls": "30/hour",
         "verification_handoff": "60/hour",
-        "photo_upload": "40/hour",
+        # Photo uploads: a short burst limit stops rapid-fire abuse, a daily cap
+        # bounds cost (AI verification + Cloudinary). Override via env.
+        "photo_upload_burst": config("THROTTLE_PHOTO_UPLOAD_BURST", default="10/minute"),
+        "photo_upload_daily": config("THROTTLE_PHOTO_UPLOAD_DAILY", default="60/day"),
         "gift_redeem": "10/hour",
     },
     "EXCEPTION_HANDLER": "duo_project.exceptions.custom_exception_handler",
 }
+
+if DEBUG:
+    # Local development: repeated test uploads should never lock you out.
+    REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"].update(
+        {
+            "photo_upload_burst": config("THROTTLE_PHOTO_UPLOAD_BURST", default="1000/minute"),
+            "photo_upload_daily": config("THROTTLE_PHOTO_UPLOAD_DAILY", default="10000/day"),
+        }
+    )
+
+# Idempotent photo uploads: a retried request with the same Idempotency-Key
+# replays the stored result instead of re-running verification.
+PHOTO_UPLOAD_IDEMPOTENCY_TTL = config("PHOTO_UPLOAD_IDEMPOTENCY_TTL", default=24 * 60 * 60, cast=int)
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Duo API",
@@ -923,3 +971,9 @@ if _sentry_dsn and not DEBUG:
         send_default_pii=False,
         environment="production",
     )
+
+# AI-written Match Insights (matching/ai_insights.py). Blank key = rule-based text only.
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
+MATCH_INSIGHTS_MODEL = env("MATCH_INSIGHTS_MODEL") or "claude-opus-5"
+# "local" = Duo's own trained model (matching/ml, default); "claude" = Claude writes the text.
+MATCH_INSIGHTS_PROVIDER = (env("MATCH_INSIGHTS_PROVIDER") or "local").strip().lower()

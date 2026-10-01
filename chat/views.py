@@ -196,6 +196,47 @@ class ConversationListView(APIView):
         )
 
 
+class ConversationMediaView(APIView):
+    """Images shared in a conversation (newest first), like a chat's media gallery.
+
+    Hides anything the viewer can't see in the thread: messages deleted for
+    everyone, deleted for them, or removed by "clear history".
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Chat"],
+        summary="List images shared in a conversation",
+        responses={200: OpenApiResponse(description='{"count": int, "results": [...]}')},
+    )
+    def get(self, request, conversation_id):
+        convo, error = get_user_conversation(conversation_id, request.user)
+        if error:
+            return error
+
+        limit = min(max(int(request.query_params.get("limit", 60) or 60), 1), 200)
+        qs = (
+            convo.messages.filter(message_type=Message.MESSAGE_TYPE_IMAGE)
+            .exclude(image_url="")
+            .exclude(is_deleted_for_everyone=True)
+            .exclude(deleted_by=request.user)
+            .order_by("-timestamp", "-id")
+        )
+        total = qs.count()
+        mine = qs.filter(sender=request.user).count()
+        items = [
+            {
+                "id": m.id,
+                "image_url": request.build_absolute_uri(m.image_url) if m.image_url.startswith("/") else m.image_url,
+                "is_mine": m.sender_id == request.user.id,
+                "timestamp": m.timestamp.isoformat(),
+            }
+            for m in qs[:limit]
+        ]
+        return Response({"count": total, "from_me": mine, "from_them": total - mine, "results": items})
+
+
 class MessageListView(APIView):
     """Get/send messages in a conversation."""
 

@@ -19,6 +19,11 @@ from photo_verification.services.image_utils import (
 from photo_verification.services.liveness_detection import capture_baseline_metrics, validate_liveness_step
 from photo_verification.services.verification_engine import VerificationEngine
 from photo_verification.throttling import VerificationHandoffThrottle
+from photo_verification.services.liveness_session import (
+    ensure_session_steps,
+    liveness_time_exceeded,
+    record_frame,
+)
 from photo_verification.verification_serializers import (
     LivenessStepResponseSerializer,
     UserVerificationSerializer,
@@ -91,7 +96,7 @@ def _status_payload(session: UserVerification) -> dict:
 
 def _session_detail_payload(session: UserVerification) -> dict:
     payload = _status_payload(session)
-    payload["liveness_steps"] = list(LIVENESS_STEPS)
+    payload["liveness_steps"] = ensure_session_steps(session)
     payload["handoff_url"] = build_handoff_url(session.session_token)
     payload["expires_at"] = session.expires_at
     return payload
@@ -116,7 +121,7 @@ class VerificationStartView(APIView):
                 "session_token": session.session_token,
                 "expires_at": session.expires_at,
                 "instructions": INSTRUCTIONS,
-                "liveness_steps": list(LIVENESS_STEPS),
+                "liveness_steps": ensure_session_steps(session),
                 "handoff_url": build_handoff_url(session.session_token),
             },
             status=status.HTTP_201_CREATED if not existing else status.HTTP_200_OK,
@@ -160,11 +165,25 @@ class VerificationLivenessView(APIView):
         if session.verification_status != VerificationStatus.PENDING.value:
             return Response({"detail": "Session is no longer active."}, status=400)
 
+        steps = ensure_session_steps(session)
+        if step not in steps:
+            return Response({"detail": "This challenge isn't part of your session."}, status=400)
+
         try:
             loaded = load_image_from_file(image)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         liveness_data = dict(session.liveness_data or {})
+
+        if liveness_time_exceeded(liveness_data):
+            # Too slow for a live person: end this session so a fresh one starts.
+            session.verification_status = VerificationStatus.REJECTED.value
+            session.rejection_reasons = ["Face challenges took too long. Please start again."]
+            session.save(update_fields=["verification_status", "rejection_reasons", "updated_at"])
+            return Response({"detail": "Face challenges took too long. Please start again."}, status=400)
+
+        # Fingerprint every frame so the final selfie must be the same person.
+        liveness_data = record_frame(liveness_data, loaded.rgb)
         baseline_key = _baseline_key(step)
         baseline = liveness_data.get(baseline_key) or {}
 
@@ -178,7 +197,7 @@ class VerificationLivenessView(APIView):
                         "score": 0.0,
                         "detail": "Face not detected. Look straight at the camera with good lighting.",
                         "liveness_steps_completed": [
-                            s for s in LIVENESS_STEPS if liveness_data.get(s, {}).get("passed")
+                            s for s in steps if liveness_data.get(s, {}).get("passed")
                         ],
                         "baseline_captured": False,
                     }
@@ -198,7 +217,7 @@ class VerificationLivenessView(APIView):
                         "Neutral pose saved. Perform the action and capture again.",
                     ),
                     "liveness_steps_completed": [
-                        s for s in LIVENESS_STEPS if liveness_data.get(s, {}).get("passed")
+                        s for s in steps if liveness_data.get(s, {}).get("passed")
                     ],
                     "baseline_captured": True,
                 }
@@ -213,7 +232,7 @@ class VerificationLivenessView(APIView):
         session.liveness_data = liveness_data
         session.save(update_fields=["liveness_data", "updated_at"])
 
-        completed = [s for s in LIVENESS_STEPS if liveness_data.get(s, {}).get("passed")]
+        completed = [s for s in steps if liveness_data.get(s, {}).get("passed")]
         return Response(
             {
                 "step": result.step,

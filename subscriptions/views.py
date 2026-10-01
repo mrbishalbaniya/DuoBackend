@@ -21,6 +21,12 @@ from .esewa import (
     verify_response_signature,
 )
 from .models import SubscriptionPayment, WalletTopUp
+from .stripe_gateway import (
+    StripeError,
+    from_minor_units,
+    retrieve_checkout_session,
+    verify_webhook,
+)
 from .serializers import (
     GiftCardRedeemRequestSerializer,
     GiftCardRedeemResponseSerializer,
@@ -49,6 +55,8 @@ from .wallet_services import (
     GiftCardInvalid,
     InsufficientWalletBalance,
     activate_topup,
+    available_payment_methods,
+    create_stripe_topup_request,
     create_topup_request,
     get_wallet_summary,
     get_wallet_transaction,
@@ -64,7 +72,8 @@ logger = logging.getLogger(__name__)
 
 
 class SubscriptionPlanView(APIView):
-    permission_classes = [IsAuthenticated]
+    # Plan names and prices are public (shown on the marketing Pricing page).
+    permission_classes = [AllowAny]
 
     @extend_schema(
         tags=["Subscriptions"],
@@ -163,7 +172,7 @@ class WalletView(APIView):
         def build():
             return get_wallet_summary(request.user)
 
-        return Response(
+        data = dict(
             api_cache.get_or_set(
                 cache_key,
                 build,
@@ -171,6 +180,9 @@ class WalletView(APIView):
                 label="wallet_summary",
             )
         )
+        # Not cached: admins can toggle payment providers at any time.
+        data["payment_methods"] = available_payment_methods()
+        return Response(data)
 
 
 class WalletTransactionListView(APIView):
@@ -608,3 +620,161 @@ class EsewaFailureView(APIView):
         return HttpResponseRedirect(
             f"{frontend}/discover?subscription=failed&tab=likes-you"
         )
+
+
+def _complete_stripe_session(session: dict) -> WalletTopUp | None:
+    """Credit the wallet for a paid Checkout Session. Idempotent; returns the top-up if paid."""
+    reference = session.get("client_reference_id") or (session.get("metadata") or {}).get(
+        "transaction_uuid"
+    )
+    if not reference:
+        return None
+    try:
+        topup = WalletTopUp.objects.get(transaction_uuid=reference, provider="stripe")
+    except WalletTopUp.DoesNotExist:
+        logger.warning("Unknown Stripe top-up reference: %s", reference)
+        return None
+
+    if topup.stripe_session_id and session.get("id") != topup.stripe_session_id:
+        logger.warning("Stripe session mismatch for %s", reference)
+        return None
+    if session.get("payment_status") != "paid":
+        return None
+
+    currency = str(session.get("currency") or "")
+    paid = from_minor_units(int(session.get("amount_total") or 0), currency)
+    if paid != topup.total_amount:
+        logger.warning(
+            "Stripe amount mismatch uuid=%s expected=%s got=%s %s",
+            reference,
+            topup.total_amount,
+            paid,
+            currency,
+        )
+        return None
+
+    activate_topup(topup, ref_id=str(session.get("payment_intent") or ""))
+    return topup
+
+
+class WalletStripeCheckoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Wallet"],
+        summary="Start a Stripe Checkout session for a wallet top-up",
+    )
+    def post(self, request):
+        try:
+            amount_int = int(request.data.get("amount"))
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "amount must be a whole number."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        success_url = (
+            request.build_absolute_uri("/api/subscriptions/stripe/success/")
+            + "?session_id={CHECKOUT_SESSION_ID}"
+        )
+        cancel_base = request.build_absolute_uri("/api/subscriptions/stripe/cancel/")
+        try:
+            topup, session = create_stripe_topup_request(
+                request.user,
+                amount_int,
+                success_url=success_url,
+                cancel_url=cancel_base,
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except StripeError as exc:
+            logger.warning("Stripe checkout creation failed: %s", exc)
+            return Response(
+                {"detail": f"Stripe error: {exc}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response(
+            {
+                "checkout_url": session.get("url"),
+                "session_id": session.get("id"),
+                "transaction_uuid": topup.transaction_uuid,
+            }
+        )
+
+
+class StripeSuccessView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(exclude=True)
+    def get(self, request):
+        frontend = settings.FRONTEND_URL.rstrip("/")
+        session_id = request.GET.get("session_id", "")
+        if not session_id:
+            return HttpResponseRedirect(f"{frontend}/wallet?wallet=failed")
+        cfg = get_integration_settings()
+        try:
+            session = retrieve_checkout_session(
+                secret_key=cfg.stripe_secret_key, session_id=session_id
+            )
+        except StripeError:
+            logger.exception("Failed to retrieve Stripe session %s", session_id)
+            return HttpResponseRedirect(f"{frontend}/wallet?wallet=failed")
+
+        if _complete_stripe_session(session):
+            return HttpResponseRedirect(f"{frontend}/wallet?wallet=success")
+        return HttpResponseRedirect(f"{frontend}/wallet?wallet=failed")
+
+
+class StripeCancelView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(exclude=True)
+    def get(self, request):
+        frontend = settings.FRONTEND_URL.rstrip("/")
+        return HttpResponseRedirect(f"{frontend}/wallet?wallet=canceled")
+
+
+class StripeWebhookView(APIView):
+    """Optional: Stripe calls this for checkout.session.completed, so coins are credited
+    even if the user closes the tab before the success redirect."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(exclude=True)
+    def post(self, request):
+        cfg = get_integration_settings()
+        try:
+            event = verify_webhook(
+                request.body,
+                request.META.get("HTTP_STRIPE_SIGNATURE", ""),
+                cfg.stripe_webhook_secret,
+            )
+        except StripeError as exc:
+            logger.warning("Rejected Stripe webhook: %s", exc)
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        event_type = event.get("type")
+        session = (event.get("data") or {}).get("object") or {}
+        if event_type in {
+            "checkout.session.completed",
+            "checkout.session.async_payment_succeeded",
+        }:
+            _complete_stripe_session(session)
+        elif event_type in {"checkout.session.expired", "checkout.session.async_payment_failed"}:
+            reference = session.get("client_reference_id")
+            if reference:
+                WalletTopUp.objects.filter(
+                    transaction_uuid=reference,
+                    provider="stripe",
+                    status=WalletTopUp.STATUS_PENDING,
+                ).update(
+                    status=WalletTopUp.STATUS_FAILED
+                    if event_type.endswith("failed")
+                    else WalletTopUp.STATUS_CANCELED,
+                    updated_at=timezone.now(),
+                )
+        return Response({"received": True})

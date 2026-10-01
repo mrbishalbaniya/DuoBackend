@@ -32,7 +32,9 @@ def get_map_analytics(filters: dict | None = None) -> dict:
     return {
         "heatmap_zones": zones,
         "popular_locations": top_locations,
-        "country_distribution": _aggregate_by_country(top_locations),
+        "country_distribution": _aggregate_by_country(
+            [{"location": loc, "count": cnt} for loc, cnt in counter.items()]
+        ),
         "city_distribution": top_locations[:20],
         "total_with_location": len(locations),
         "period": period,
@@ -236,10 +238,29 @@ def _build_city_heatmap_zones(*, since) -> list[dict]:
     return zones[:40]
 
 
+# Profile locations are free text; many name a Nepali city without the country.
+_NEPAL_PLACES = {
+    "nepal", "kathmandu", "lalitpur", "patan", "bhaktapur", "pokhara", "biratnagar",
+    "chitwan", "bharatpur", "birgunj", "dharan", "butwal", "hetauda", "janakpur",
+    "nepalgunj", "itahari", "dhangadhi", "bhairahawa", "siddharthanagar", "kirtipur",
+    "banepa", "dhulikhel", "damak", "birtamod", "tansen", "gorkha", "ilam", "pangmi",
+}
+
+
+def _country_for(location: str) -> str:
+    parts = [p.strip() for p in str(location).split(",") if p.strip()]
+    if not parts:
+        return "Unknown"
+    for part in reversed(parts):
+        words = part.lower().replace("metropolitan city", "").replace("sub-metropolitan city", "").split()
+        if part.lower() in _NEPAL_PLACES or (words and words[0] in _NEPAL_PLACES):
+            return "Nepal"
+    return parts[-1]
+
+
 def _aggregate_by_country(locations: list[dict]) -> list[dict]:
     countries: dict[str, int] = {}
     for item in locations:
-        loc = item["location"]
-        country = loc.split(",")[-1].strip() if "," in loc else loc
+        country = _country_for(item["location"])
         countries[country] = countries.get(country, 0) + item["count"]
     return [{"country": k, "count": v} for k, v in sorted(countries.items(), key=lambda x: -x[1])]

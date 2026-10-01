@@ -29,6 +29,8 @@ class SiteSettingsAdmin(admin.ModelAdmin):
         "google_client_secret_status",
         "email_host_password_status",
         "esewa_secret_key_status",
+        "stripe_secret_key_status",
+        "stripe_webhook_secret_status",
         "webrtc_turn_credential_status",
         "webrtc_turn_secret_status",
         "cloudinary_api_secret_status",
@@ -136,6 +138,26 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Stripe payments",
+            {
+                "fields": (
+                    "stripe_enabled",
+                    "stripe_publishable_key",
+                    "stripe_secret_key_status",
+                    "stripe_secret_key",
+                    "stripe_webhook_secret_status",
+                    "stripe_webhook_secret",
+                    "stripe_currency",
+                ),
+                "description": (
+                    "Card payments for wallet top-ups via Stripe Checkout. "
+                    "Get keys at dashboard.stripe.com/apikeys. Optional webhook endpoint: "
+                    "&lt;backend&gt;/api/subscriptions/stripe/webhook/ with event "
+                    "checkout.session.completed."
+                ),
+            },
+        ),
+        (
             "Cloudinary media",
             {
                 "fields": (
@@ -172,15 +194,16 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "OpenWeather",
+            "OpenWeather (unused)",
             {
+                "classes": ("collapse",),
                 "fields": (
                     "openweather_api_key_status",
                     "openweather_api_key",
                 ),
                 "description": (
-                    "Live map weather (current conditions, forecast, air quality). "
-                    "Values here override OPENWEATHER_API_KEY from environment when set."
+                    "Not needed any more: map weather now uses Open-Meteo, which is free "
+                    "and keyless. This key is ignored and kept only for old configs."
                 ),
             },
         ),
@@ -225,6 +248,14 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     @admin.display(description="eSewa secret key")
     def esewa_secret_key_status(self, obj):
         return _secret_status_html(obj.esewa_secret_key)
+
+    @admin.display(description="Stripe secret key")
+    def stripe_secret_key_status(self, obj):
+        return _secret_status_html(obj.stripe_secret_key)
+
+    @admin.display(description="Stripe webhook secret")
+    def stripe_webhook_secret_status(self, obj):
+        return _secret_status_html(obj.stripe_webhook_secret)
 
     @admin.display(description="TURN credential")
     def webrtc_turn_credential_status(self, obj):

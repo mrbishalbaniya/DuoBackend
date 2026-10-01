@@ -185,6 +185,33 @@ class SiteSettings(models.Model):
         help_text="Backend failure callback.",
     )
 
+    # Stripe
+    stripe_enabled = models.BooleanField(
+        default=False,
+        help_text="Show “Pay with card (Stripe)” on the wallet page.",
+    )
+    stripe_publishable_key = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Publishable key (pk_test_… or pk_live_…) from dashboard.stripe.com/apikeys.",
+    )
+    stripe_secret_key = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Secret key (sk_test_… or sk_live_…). Leave blank when saving to keep the current value.",
+    )
+    stripe_webhook_secret = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Webhook signing secret (whsec_…) for /api/subscriptions/stripe/webhook/.",
+    )
+    stripe_currency = models.CharField(
+        max_length=3,
+        blank=True,
+        default="npr",
+        help_text="ISO currency code charged by Stripe. 1 unit of this currency = 1 coin.",
+    )
+
     # Cloudinary
     cloudinary_cloud_name = models.CharField(max_length=128, blank=True)
     cloudinary_api_key = models.CharField(max_length=128, blank=True)

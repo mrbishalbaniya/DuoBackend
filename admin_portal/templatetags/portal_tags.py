@@ -107,6 +107,8 @@ def _icon_for_model(app_label, model_name):
         ("security", "securityevent"): "fas fa-exclamation-triangle",
         ("analytics", "analyticsevent"): "fas fa-bolt",
         ("photo_verification", "userverification"): "fas fa-certificate",
+        ("photo_verification", "photoanalysis"): "fas fa-image",
+        ("photo_verification", "faceembedding"): "fas fa-fingerprint",
         ("update", "appversion"): "fas fa-mobile-alt",
         ("site_config", "sitesettings"): "fas fa-cog",
     }

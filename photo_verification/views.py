@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
+
 from django.conf import settings
+from django.core.cache import cache
+from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import parsers, status
@@ -9,7 +15,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from duo_project.cloudinary_media.cleanup import delete_cloudinary_url
-from duo_project.cloudinary_upload import CloudinaryNotConfiguredError, upload_profile_photo_result
+from duo_project.cloudinary_upload import (
+    CloudinaryNotConfiguredError,
+    _validate_profile_image,
+    upload_profile_photo_result,
+)
 from photo_verification.constants import ModerationStatus, RejectionCategory
 from photo_verification.models import PhotoAnalysis, ProfilePhoto
 from photo_verification.serializers import (
@@ -20,7 +30,17 @@ from photo_verification.serializers import (
 )
 from photo_verification.services.pipeline import PhotoVerificationPipeline
 from photo_verification.services.profile_photo_sync import sync_profile_photos
-from photo_verification.throttling import PhotoUploadThrottle
+from photo_verification.throttling import PhotoUploadBurstThrottle, PhotoUploadDailyThrottle
+
+logger = logging.getLogger("duo.photos")
+
+IDEMPOTENCY_HEADER = "HTTP_IDEMPOTENCY_KEY"
+MAX_IDEMPOTENCY_KEY_LENGTH = 128
+
+
+def _error(code: str, message: str, http_status: int, **extra) -> Response:
+    """Error body shared with duo_project.exceptions: code + message + detail."""
+    return Response({"code": code, "message": message, "detail": message, **extra}, status=http_status)
 
 
 def _save_analysis(user, image_url: str, result, *, is_primary: bool) -> PhotoAnalysis:
@@ -59,7 +79,52 @@ class PhotoUploadView(APIView):
 
     permission_classes = [IsAuthenticated]
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
-    throttle_classes = [PhotoUploadThrottle]
+    throttle_classes = [PhotoUploadBurstThrottle, PhotoUploadDailyThrottle]
+
+    # -- Throttling is deferred --------------------------------------------
+    # DRF normally throttles in initial(), before the handler runs. That makes
+    # a wrong file type or an oversized file cost upload quota. We skip the
+    # automatic check and enforce it in post() after cheap validation, so only
+    # uploads that reach AI verification + storage count.
+    def check_throttles(self, request):
+        return None
+
+    def _enforce_throttles(self, request):
+        APIView.check_throttles(self, request)
+
+    # -- Idempotency -------------------------------------------------------
+    # The client sends one Idempotency-Key per photo and reuses it on retry.
+    # A retry after a lost response replays the stored result instead of
+    # re-running verification, creating a duplicate ProfilePhoto, or using quota.
+    def _idempotency_cache_key(self, request) -> str | None:
+        raw = (request.META.get(IDEMPOTENCY_HEADER) or "").strip()
+        if not raw or len(raw) > MAX_IDEMPOTENCY_KEY_LENGTH:
+            return None
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return f"photo_upload:idem:{request.user.id}:{digest}"
+
+    @staticmethod
+    def _cache_get(key):
+        try:
+            return cache.get(key)
+        except Exception:
+            logger.warning("photo_upload_idempotency_cache_read_failed", exc_info=True)
+            return None
+
+    @staticmethod
+    def _remember(key: str | None, response: Response) -> Response:
+        if not key:
+            return response
+        try:
+            data = json.loads(json.dumps(response.data, cls=DjangoJSONEncoder))
+            cache.set(
+                key,
+                {"status": response.status_code, "data": data},
+                timeout=getattr(settings, "PHOTO_UPLOAD_IDEMPOTENCY_TTL", 86400),
+            )
+        except Exception:
+            logger.warning("photo_upload_idempotency_cache_write_failed", exc_info=True)
+        return response
 
     @extend_schema(
         tags=["Photos"],
@@ -77,9 +142,29 @@ class PhotoUploadView(APIView):
         responses={200: PhotoUploadResponseSerializer, 201: PhotoUploadResponseSerializer},
     )
     def post(self, request):
-        image = request.FILES.get("image") or request.data.get("image")
+        # 1. Replay a completed request with the same idempotency key.
+        idem_key = self._idempotency_cache_key(request)
+        if idem_key:
+            cached = self._cache_get(idem_key)
+            if cached:
+                replay = Response(cached["data"], status=cached["status"])
+                replay["Idempotent-Replayed"] = "true"
+                return replay
+
+        # 2. Cheap validation first. These failures never cost quota.
+        image = request.FILES.get("image")
         if not image:
-            return Response({"detail": "No image provided."}, status=status.HTTP_400_BAD_REQUEST)
+            return _error("no_image", "Please choose a photo to upload.", status.HTTP_400_BAD_REQUEST)
+        try:
+            _validate_profile_image(image)
+            image.seek(0)
+        except ValueError as exc:
+            message = str(exc)
+            code = "file_too_large" if "too large" in message.lower() else "invalid_file"
+            return _error(code, message, status.HTTP_400_BAD_REQUEST)
+
+        # 3. Only now count this upload against the rate limits (raises 429).
+        self._enforce_throttles(request)
 
         is_primary = str(request.data.get("is_primary", "false")).lower() in ("1", "true", "yes")
 
@@ -87,10 +172,11 @@ class PhotoUploadView(APIView):
         try:
             result = pipeline.analyze_file(image, user_id=request.user.id, is_primary=is_primary)
         except Exception as exc:
-            detail = "Image analysis failed. Please try a different photo."
+            logger.exception("photo_analysis_failed user_id=%s", request.user.id)
+            message = "We couldn't analyze this photo. Please try again or use a different photo."
             if settings.DEBUG:
-                detail = f"Image analysis failed: {exc}"
-            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
+                message = f"Image analysis failed: {exc}"
+            return _error("analysis_failed", message, status.HTTP_502_BAD_GATEWAY)
 
         # Note: no special-cased "no face detected" branch here. score_and_decide
         # already forces PhotoStatus.REJECTED with "No human face detected." in
@@ -127,14 +213,20 @@ class PhotoUploadView(APIView):
                 order=ProfilePhoto.objects.filter(user=request.user).count(),
                 photo_analysis=record,
             )
-            return Response(
-                {
-                    "success": False,
-                    "image_url": "",
-                    "analysis": PhotoAnalysisSerializer(record).data,
-                    "detail": result.moderation_rejection_reason or "Photo rejected.",
-                },
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            message = result.moderation_rejection_reason or "This photo couldn't be approved."
+            return self._remember(
+                idem_key,
+                Response(
+                    {
+                        "success": False,
+                        "code": "photo_rejected",
+                        "message": message,
+                        "image_url": "",
+                        "analysis": PhotoAnalysisSerializer(record).data,
+                        "detail": message,
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                ),
             )
 
         # APPROVED or MANUAL_REVIEW both get uploaded/stored — a manual
@@ -145,9 +237,18 @@ class PhotoUploadView(APIView):
             upload_result = upload_profile_photo_result(image, user_id=request.user.id)
             image_url = upload_result.image_url
         except CloudinaryNotConfiguredError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            logger.error("photo_storage_not_configured: %s", exc)
+            message = str(exc) if settings.DEBUG else "Photo storage is temporarily unavailable. Please try again later."
+            return _error("storage_unavailable", message, status.HTTP_503_SERVICE_UNAVAILABLE)
         except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return _error("invalid_file", str(exc), status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            logger.exception("photo_storage_upload_failed user_id=%s", request.user.id)
+            return _error(
+                "upload_failed",
+                "We couldn't save your photo. Please try again.",
+                status.HTTP_502_BAD_GATEWAY,
+            )
 
         record = _save_analysis(request.user, image_url, result, is_primary=is_primary)
 
@@ -195,7 +296,7 @@ class PhotoUploadView(APIView):
         }
         if upload_result.media:
             payload["media"] = upload_result.media
-        return Response(payload, status=http_status)
+        return self._remember(idem_key, Response(payload, status=http_status))
 
 
 class MyProfilePhotosView(APIView):

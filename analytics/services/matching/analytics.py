@@ -50,7 +50,7 @@ def get_matching_analytics(filters: dict | None = None) -> dict:
         },
         "averages": {
             "compatibility_score": round(float(compatibility["avg"] or 0), 2),
-            "time_to_match_hours": 4.2,
+            "time_to_match_hours": _average_time_to_match_hours(matches),
         },
         "distribution": {
             "swipes_by_action": list(swipe_breakdown),
@@ -59,3 +59,24 @@ def get_matching_analytics(filters: dict | None = None) -> dict:
             ],
         },
     }
+
+
+def _average_time_to_match_hours(matches, limit: int = 5000):
+    """Mean hours from the first like between a pair to the moment they matched."""
+    pairs = list(matches.values_list("user1_id", "user2_id", "matched_at")[:limit])
+    if not pairs:
+        return None
+    user_ids = {u for a, b, _ in pairs for u in (a, b)}
+    first_like = {}
+    for from_id, to_id, created in Swipe.objects.filter(
+        from_user_id__in=user_ids, to_user_id__in=user_ids, action__in=["LIKE", "SUPERLIKE"]
+    ).values_list("from_user_id", "to_user_id", "created_at"):
+        key = frozenset((from_id, to_id))
+        if key not in first_like or created < first_like[key]:
+            first_like[key] = created
+    hours = []
+    for a, b, matched_at in pairs:
+        liked = first_like.get(frozenset((a, b)))
+        if liked and matched_at >= liked:
+            hours.append((matched_at - liked).total_seconds() / 3600)
+    return round(sum(hours) / len(hours), 2) if hours else None

@@ -74,7 +74,6 @@ def get_fraud_signals(filters: dict | None = None) -> dict:
             "fake_profile_reports": fake_profiles,
             "bot_detection_hits": bot_signals,
             "rapid_swipe_accounts": rapid_swipes,
-            "vpn_usage": 0,
         },
         "risk_score": min(100, fake_profiles * 5 + bot_signals * 3),
     }

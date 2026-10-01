@@ -59,6 +59,14 @@ class NotificationPreference(models.Model):
     payment_enabled = models.BooleanField(default=True)
     sound_enabled = models.BooleanField(default=True)
     vibration_enabled = models.BooleanField(default=True)
+    # Email preferences. Security emails (OTP codes, password reset, login
+    # verification, email change, account status) ignore these on purpose.
+    email_enabled = models.BooleanField(default=True)
+    email_matches = models.BooleanField(default=True)
+    email_payments = models.BooleanField(default=True)
+    email_verification = models.BooleanField(default=True)
+    email_announcements = models.BooleanField(default=True)
+    email_marketing = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

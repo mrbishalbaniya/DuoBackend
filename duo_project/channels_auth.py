@@ -101,6 +101,59 @@ def _extract_token(scope) -> str | None:
     return None
 
 
+# Staff-only sockets used from Django admin pages, which have a session but no JWT.
+SESSION_WS_PATHS = ("/ws/analytics/",)
+
+
+def _header(scope, name: bytes) -> str:
+    for header_name, header_value in scope.get("headers", []):
+        if header_name.lower() == name:
+            return header_value.decode("latin-1")
+    return ""
+
+
+def _same_origin(scope) -> bool:
+    """Reject cross-site WebSocket hijacking: Origin must match Host."""
+    origin = _header(scope, b"origin")
+    host = _header(scope, b"host")
+    if not origin or not host:
+        return False
+    return origin.split("://", 1)[-1].rstrip("/").lower() == host.lower()
+
+
+@database_sync_to_async
+def _user_from_session(scope):
+    from importlib import import_module
+
+    from django.conf import settings
+    from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
+    from django.utils.crypto import constant_time_compare
+
+    session_key = None
+    for part in _header(scope, b"cookie").split(";"):
+        name, _, value = part.strip().partition("=")
+        if name == settings.SESSION_COOKIE_NAME:
+            session_key = value
+            break
+    if not session_key:
+        return AnonymousUser()
+
+    session = import_module(settings.SESSION_ENGINE).SessionStore(session_key=session_key)
+    user_id = session.get(SESSION_KEY)
+    if not user_id or session.get(BACKEND_SESSION_KEY) not in settings.AUTHENTICATION_BACKENDS:
+        return AnonymousUser()
+    try:
+        user = User.objects.get(pk=user_id)
+    except (User.DoesNotExist, ValueError):
+        return AnonymousUser()
+    # Same check Django's auth.get_user does: a password change ends the session.
+    if not constant_time_compare(session.get(HASH_SESSION_KEY, ""), user.get_session_auth_hash()):
+        return AnonymousUser()
+    if not user.is_active:
+        return AnonymousUser()
+    return user
+
+
 class JWTAuthMiddleware(BaseMiddleware):
     async def __call__(self, scope, receive, send):
         if scope["type"] != "websocket":
@@ -113,6 +166,14 @@ class JWTAuthMiddleware(BaseMiddleware):
         conversation_id = kwargs.get("conversation_id") or _conversation_id_from_path(path)
         query_string = scope.get("query_string", b"").decode()
         query = parse_qs(query_string)
+
+        # Admin-page sockets: an admin session wins over any app JWT cookie that
+        # the browser also sends for a different user on the same host.
+        if path.startswith(SESSION_WS_PATHS) and _same_origin(scope):
+            session_user = await _user_from_session(scope)
+            if session_user.is_authenticated:
+                scope["user"] = session_user
+                return await super().__call__(scope, receive, send)
 
         user_id = None
         ticket_salt = CALL_WS_TICKET_SALT if "/ws/call/" in path else WS_TICKET_SALT
@@ -131,6 +192,9 @@ class JWTAuthMiddleware(BaseMiddleware):
 
         if user_id:
             scope["user"] = await _get_user(user_id)
+        elif path.startswith(SESSION_WS_PATHS) and _same_origin(scope):
+            # Admin pages authenticate with a Django session, not a JWT.
+            scope["user"] = await _user_from_session(scope)
         else:
             scope["user"] = AnonymousUser()
 

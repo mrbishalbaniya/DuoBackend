@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var BRAND = window.DuoAnalyticsBrand || {
+  var BRAND = Object.assign({
     primary: "#e84a7a",
     accent: "#d4a574",
     love: "#ff4d6d",
@@ -9,7 +9,7 @@
     warning: "#f59e0b",
     error: "#ef4444",
     tertiary: "#8b5cf6",
-  };
+  }, window.DuoAnalyticsBrand || {});
 
   var moduleCharts = {};
   var mapInstance = null;
@@ -28,11 +28,32 @@
     };
   }
 
+  function esc(v) {
+    return String(v).replace(/[&<>"']/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+    });
+  }
+
   function fmtNum(v) {
-    if (v === null || v === undefined) return "—";
-    if (typeof v === "number") return v.toLocaleString();
+    if (v === null || v === undefined || v === "") return "—";
+    if (typeof v === "number") return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
     return String(v);
   }
+
+  function fmtPct(v) {
+    if (v === null || v === undefined || v === "") return "—";
+    return fmtNum(Number(v)) + "%";
+  }
+
+  function humanize(v) {
+    if (v === null || v === undefined || v === "") return "Unknown";
+    return String(v).replace(/[_-]+/g, " ").replace(/\b\w/g, function (ch) { return ch.toUpperCase(); });
+  }
+
+  var GENDER_LABELS = {
+    M: "Male", MALE: "Male", F: "Female", FEMALE: "Female",
+    O: "Other", OTHER: "Other", NB: "Non-binary", "NON-BINARY": "Non-binary",
+  };
 
   function fmtMoney(v) {
     if (v === null || v === undefined) return "—";
@@ -44,9 +65,9 @@
     if (!el) return;
     el.innerHTML = items.map(function (item) {
       return '<article class="analytics-kpi-card">' +
-        '<span class="kpi-label">' + item.label + '</span>' +
-        '<strong class="kpi-value">' + item.value + '</strong>' +
-        (item.delta ? '<span class="kpi-delta">' + item.delta + '</span>' : '') +
+        '<span class="kpi-label">' + esc(item.label) + '</span>' +
+        '<strong class="kpi-value">' + esc(item.value === null || item.value === undefined ? "—" : item.value) + '</strong>' +
+        (item.delta ? '<span class="kpi-delta">' + esc(item.delta) + '</span>' : '') +
         '</article>';
     }).join("");
   }
@@ -54,9 +75,13 @@
   function renderTable(containerId, headers, rows) {
     var el = document.getElementById(containerId);
     if (!el) return;
-    var head = '<thead><tr>' + headers.map(function (h) { return '<th>' + h + '</th>'; }).join("") + '</tr></thead>';
+    if (!rows.length) {
+      el.innerHTML = '<p class="analytics-empty">No data for this period.</p>';
+      return;
+    }
+    var head = '<thead><tr>' + headers.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join("") + '</tr></thead>';
     var body = '<tbody>' + rows.map(function (row) {
-      return '<tr>' + row.map(function (cell) { return '<td>' + cell + '</td>'; }).join("") + '</tr>';
+      return '<tr>' + row.map(function (cell) { return '<td>' + esc(cell === null || cell === undefined ? "—" : cell) + '</td>'; }).join("") + '</tr>';
     }).join("") + '</tbody>';
     el.innerHTML = '<table class="analytics-table">' + head + body + '</table>';
   }
@@ -77,8 +102,13 @@
     config.options.responsive = true;
     config.options.maintainAspectRatio = false;
     if (config.type === "pie" || config.type === "doughnut") {
-      var panel = canvas.closest(".analytics-panel");
-      if (panel) panel.classList.add("analytics-panel--doughnut");
+      // Chart.js sizes round charts from a positioned parent with a fixed height.
+      if (!canvas.parentNode.classList.contains("analytics-chart-box")) {
+        var box = document.createElement("div");
+        box.className = "analytics-chart-box";
+        canvas.parentNode.insertBefore(box, canvas);
+        box.appendChild(canvas);
+      }
       config.options.cutout = config.options.cutout || (config.type === "doughnut" ? "65%" : undefined);
       if (!config.options.plugins) config.options.plugins = {};
       if (!config.options.plugins.legend) {
@@ -105,7 +135,9 @@
 
   function palette(n) {
     var colors = [BRAND.primary, BRAND.accent, BRAND.love, BRAND.success, BRAND.warning, BRAND.tertiary];
-    return colors.slice(0, n);
+    var out = [];
+    for (var i = 0; i < n; i++) out.push(colors[i % colors.length]);
+    return out;
   }
 
   window.DuoAnalyticsModules = {
@@ -126,6 +158,9 @@
             if (scale.ticks) scale.ticks.color = c.color;
             if (scale.grid && scale.grid.display !== false) scale.grid.color = c.grid;
           });
+        }
+        if (chart.options.plugins && chart.options.plugins.legend && chart.options.plugins.legend.labels) {
+          chart.options.plugins.legend.labels.color = c.color;
         }
         chart.update();
       });
@@ -152,28 +187,18 @@
         options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: chartColors().color }, grid: { color: chartColors().grid } }, y: { ticks: { color: chartColors().color }, grid: { color: chartColors().grid } } } },
       });
 
-      var fc = data.forecast || [];
-      makeChart("revenue-fc", "revenue-forecast-chart", {
-        type: "line",
-        data: {
-          labels: fc.map(function (d) { return d.date; }),
-          datasets: [{ label: "Forecast", data: fc.map(function (d) { return d.predicted_revenue; }), borderColor: BRAND.accent, borderDash: [6, 4], tension: 0.3 }],
-        },
-        options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: chartColors().color }, grid: { color: chartColors().grid } }, y: { ticks: { color: chartColors().color }, grid: { color: chartColors().grid } } } },
-      });
-
       var plans = data.by_plan || [];
       makeChart("revenue-plan", "revenue-plan-chart", {
         type: "doughnut",
         data: {
-          labels: plans.map(function (p) { return "Plan #" + (p.plan_id || "N/A"); }),
+          labels: plans.map(function (p) { return humanize(p.plan_id || "Other"); }),
           datasets: [{ data: plans.map(function (p) { return p.revenue; }), backgroundColor: palette(plans.length) }],
         },
         options: { responsive: true, plugins: { legend: { position: "bottom", labels: { color: chartColors().color } } } },
       });
 
       renderTable("revenue-plan-table", ["Plan", "Revenue", "Count"], plans.map(function (p) {
-        return ["Plan #" + (p.plan_id || "N/A"), fmtMoney(p.revenue), fmtNum(p.count)];
+        return [humanize(p.plan_id || "Other"), fmtMoney(p.revenue), fmtNum(p.count)];
       }));
     },
 
@@ -184,8 +209,8 @@
         { label: "Verified", value: fmtNum(data.totals.verified) },
         { label: "Onboarded", value: fmtNum(data.totals.onboarded) },
         { label: "Premium", value: fmtNum(data.totals.premium) },
-        { label: "Verification Rate", value: data.totals.verification_rate + "%" },
-        { label: "Premium Conversion", value: data.totals.premium_conversion + "%" },
+        { label: "Verification Rate", value: fmtPct(data.totals.verification_rate) },
+        { label: "Premium Conversion", value: fmtPct(data.totals.premium_conversion) },
       ]);
 
       var growth = data.growth || [];
@@ -195,10 +220,18 @@
         options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: chartColors().color }, grid: { color: chartColors().grid } }, y: { ticks: { color: chartColors().color }, grid: { color: chartColors().grid } } } },
       });
 
-      var gender = data.segmentation.gender || [];
+      // Stored values mix codes and words ("M", "male"); merge them under one label.
+      var genderTotals = {};
+      (data.segmentation.gender || []).forEach(function (g) {
+        var key = String(g.gender || "").trim().toUpperCase();
+        var label = GENDER_LABELS[key] || humanize(g.gender);
+        genderTotals[label] = (genderTotals[label] || 0) + g.count;
+      });
+      var gender = Object.keys(genderTotals).map(function (k) { return { gender: k, count: genderTotals[k] }; })
+        .sort(function (a, b) { return b.count - a.count; });
       makeChart("users-gender", "users-gender-chart", {
         type: "pie",
-        data: { labels: gender.map(function (g) { return g.gender || "Unknown"; }), datasets: [{ data: gender.map(function (g) { return g.count; }), backgroundColor: palette(gender.length) }] },
+        data: { labels: gender.map(function (g) { return g.gender; }), datasets: [{ data: gender.map(function (g) { return g.count; }), backgroundColor: palette(gender.length) }] },
         options: { responsive: true, plugins: { legend: { position: "bottom", labels: { color: chartColors().color } } } },
       });
 
@@ -212,7 +245,7 @@
       var platform = data.segmentation.platform || [];
       makeChart("users-platform", "users-platform-chart", {
         type: "doughnut",
-        data: { labels: platform.map(function (p) { return p.platform || "Unknown"; }), datasets: [{ data: platform.map(function (p) { return p.count; }), backgroundColor: palette(platform.length) }] },
+        data: { labels: platform.map(function (p) { return humanize(p.platform); }), datasets: [{ data: platform.map(function (p) { return p.count; }), backgroundColor: palette(platform.length) }] },
         options: { responsive: true, plugins: { legend: { position: "bottom", labels: { color: chartColors().color } } } },
       });
     },
@@ -224,14 +257,14 @@
         { label: "Matches", value: fmtNum(data.totals.matches) },
         { label: "Likes", value: fmtNum(data.totals.likes) },
         { label: "Superlikes", value: fmtNum(data.totals.superlikes) },
-        { label: "Acceptance Rate", value: data.rates.acceptance_rate + "%" },
-        { label: "Avg Compatibility", value: data.averages.compatibility_score },
+        { label: "Acceptance Rate", value: fmtPct(data.rates.acceptance_rate) },
+        { label: "Avg Compatibility", value: fmtNum(data.averages.compatibility_score) },
       ]);
 
       var actions = data.distribution.swipes_by_action || [];
       makeChart("matching-swipes", "matching-swipes-chart", {
         type: "bar",
-        data: { labels: actions.map(function (a) { return a.action; }), datasets: [{ data: actions.map(function (a) { return a.count; }), backgroundColor: palette(actions.length), borderRadius: 8 }] },
+        data: { labels: actions.map(function (a) { return humanize(String(a.action).toLowerCase()); }), datasets: [{ data: actions.map(function (a) { return a.count; }), backgroundColor: palette(actions.length), borderRadius: 8 }] },
         options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: chartColors().color }, grid: { display: false } }, y: { ticks: { color: chartColors().color }, grid: { color: chartColors().grid } } } },
       });
 
@@ -245,9 +278,9 @@
       renderTable("matching-metrics-table", ["Metric", "Value"], [
         ["Profile Views", fmtNum(data.totals.profile_views)],
         ["Skips", fmtNum(data.totals.skips)],
-        ["Rejection Rate", data.rates.rejection_rate + "%"],
-        ["Profile View Rate", data.rates.profile_view_rate + "%"],
-        ["Time to Match (hrs)", data.averages.time_to_match_hours],
+        ["Rejection Rate", fmtPct(data.rates.rejection_rate)],
+        ["Profile View Rate", fmtPct(data.rates.profile_view_rate)],
+        ["Time to Match (hrs)", fmtNum(data.averages.time_to_match_hours)],
       ]);
     },
 
@@ -257,9 +290,9 @@
         { label: "Messages Sent", value: fmtNum(data.totals.messages_sent) },
         { label: "Conversations", value: fmtNum(data.totals.conversations) },
         { label: "Active Conversations", value: fmtNum(data.totals.active_conversations) },
-        { label: "Read Rate", value: data.rates.read_rate + "%" },
-        { label: "Delivery Rate", value: data.rates.delivery_rate + "%" },
-        { label: "Avg Reply (min)", value: data.averages.reply_time_min },
+        { label: "Read Rate", value: fmtPct(data.rates.read_rate) },
+        { label: "Delivery Rate", value: fmtPct(data.rates.delivery_rate) },
+        { label: "Avg Reply (min)", value: fmtNum(data.averages.reply_time_min) },
       ]);
 
       var timeline = data.timeline || [];
@@ -278,33 +311,27 @@
         options: { responsive: true, plugins: { legend: { position: "bottom", labels: { color: chartColors().color } } } },
       });
 
-      makeChart("chat-rates", "chat-rates-chart", {
-        type: "bar",
-        data: { labels: ["Read Rate", "Delivery Rate"], datasets: [{ data: [data.rates.read_rate, data.rates.delivery_rate], backgroundColor: [BRAND.success, BRAND.accent], borderRadius: 8 }] },
-        options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: chartColors().color }, grid: { display: false } }, y: { max: 100, ticks: { color: chartColors().color }, grid: { color: chartColors().grid } } } },
-      });
     },
 
     loadFunnel: function (data) {
       if (!data) return;
       renderKpis("funnel-kpis", [
         { label: "Entered Funnel", value: fmtNum(data.total_entered) },
-        { label: "Overall Conversion", value: data.overall_conversion + "%" },
-        { label: "Funnel", value: data.funnel },
+        { label: "Overall Conversion", value: fmtPct(data.overall_conversion) },
       ]);
 
       var stages = data.stages || [];
       makeChart("funnel-module", "funnel-module-chart", {
         type: "bar",
         data: {
-          labels: stages.map(function (s) { return s.stage.replace(/_/g, " "); }),
+          labels: stages.map(function (s) { return humanize(s.stage); }),
           datasets: [{ data: stages.map(function (s) { return s.count; }), backgroundColor: "rgba(212,165,116,0.55)", borderColor: BRAND.accent, borderWidth: 1, borderRadius: 6 }],
         },
         options: { indexAxis: "y", responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: chartColors().color }, grid: { color: chartColors().grid } }, y: { ticks: { color: chartColors().color }, grid: { display: false } } } },
       });
 
       renderTable("funnel-stages-table", ["Stage", "Count", "Rate %", "Drop-off %"], stages.map(function (s) {
-        return [s.stage.replace(/_/g, " "), fmtNum(s.count), s.rate + "%", s.drop_off + "%"];
+        return [humanize(s.stage), fmtNum(s.count), fmtPct(s.rate), fmtPct(s.drop_off)];
       }));
     },
 
@@ -314,22 +341,26 @@
         { label: "Returning (7d)", value: fmtNum(data.summary.returning_users) },
         { label: "Inactive", value: fmtNum(data.summary.inactive_users) },
         { label: "Lost Users", value: fmtNum(data.summary.lost_users) },
-        { label: "Retention (7d)", value: data.summary.retention_rate_7d + "%" },
-        { label: "Churn Rate", value: data.summary.churn_rate + "%" },
+        { label: "Retention (7d)", value: fmtPct(data.summary.retention_rate_7d) },
+        { label: "Churn Rate", value: fmtPct(data.summary.churn_rate) },
       ]);
 
       var cohorts = data.cohorts || [];
       var periods = ["day_1", "day_7", "day_30", "day_90", "day_180", "day_365"];
       var matrix = document.getElementById("retention-cohort-matrix");
       if (!matrix) return;
+      if (!cohorts.length) {
+        matrix.innerHTML = '<p class="analytics-empty">No signup cohorts in this period.</p>';
+        return;
+      }
 
       var header = '<thead><tr><th>Cohort</th><th>Size</th>' +
         periods.map(function (p) { return '<th>' + p.replace("day_", "D") + '</th>'; }).join("") + '</tr></thead>';
       var rows = cohorts.map(function (c) {
-        return '<tr><td>' + c.cohort_date + '</td><td>' + c.size + '</td>' +
+        return '<tr><td>' + esc(c.cohort_date) + '</td><td>' + esc(c.size) + '</td>' +
           periods.map(function (p) {
-            var cell = (c.periods && c.periods[p]) ? c.periods[p].rate : 0;
-            var intensity = Math.min(100, cell);
+            var cell = (c.periods && c.periods[p]) ? Number(c.periods[p].rate) || 0 : 0;
+            var intensity = Math.max(0, Math.min(100, cell));
             return '<td class="cohort-cell" style="--cohort-intensity:' + intensity + '">' + cell + '%</td>';
           }).join("") + '</tr>';
       }).join("");
@@ -343,12 +374,9 @@
         { label: "Churn Risk Users", value: fmtNum(p.churn_risk_users) },
         { label: "Premium Candidates", value: fmtNum(p.premium_conversion_candidates) },
         { label: "Inactive 30d", value: fmtNum(p.inactive_users_30d) },
-        { label: "Renewal Likelihood", value: p.renewal_likelihood_pct + "%" },
+        { label: "Renewal Likelihood", value: fmtPct(p.renewal_likelihood_pct) },
         { label: "Fraud Risk Score", value: fmtNum(p.fraud_risk_score) },
       ]);
-
-      var model = document.getElementById("forecast-model-version");
-      if (model) model.textContent = data.model_version || "heuristic";
 
       var fc = data.revenue_forecast || [];
       makeChart("forecast-revenue", "forecast-revenue-chart", {
@@ -358,19 +386,20 @@
       });
 
       var trending = data.trending_features || [];
+      var trendPanel = document.getElementById("forecast-trending-chart");
+      if (trendPanel) {
+        var trendWrap = trendPanel.parentNode;
+        var trendEmpty = trendWrap.querySelector(".analytics-empty");
+        if (trendEmpty) trendEmpty.remove();
+        trendPanel.hidden = !trending.length;
+        if (!trending.length) trendWrap.insertAdjacentHTML("beforeend", '<p class="analytics-empty">No tracked activity in the last two weeks.</p>');
+      }
       makeChart("forecast-trending", "forecast-trending-chart", {
         type: "bar",
-        data: { labels: trending.map(function (t) { return t.feature; }), datasets: [{ data: trending.map(function (t) { return t.growth_pct; }), backgroundColor: BRAND.accent, borderRadius: 8 }] },
+        data: { labels: trending.map(function (t) { return humanize(t.feature); }), datasets: [{ data: trending.map(function (t) { return t.growth_pct; }), backgroundColor: BRAND.accent, borderRadius: 8 }] },
         options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: chartColors().color }, grid: { display: false } }, y: { ticks: { color: chartColors().color }, grid: { color: chartColors().grid } } } },
       });
 
-      renderTable("forecast-predictions-table", ["Prediction", "Value"], [
-        ["Churn risk users", fmtNum(p.churn_risk_users)],
-        ["Premium conversion candidates", fmtNum(p.premium_conversion_candidates)],
-        ["Inactive users (30d)", fmtNum(p.inactive_users_30d)],
-        ["Renewal likelihood", p.renewal_likelihood_pct + "%"],
-        ["Fraud risk score", fmtNum(p.fraud_risk_score)],
-      ]);
     },
 
     loadSecurity: function (data, fraud) {
@@ -382,12 +411,13 @@
         { label: "Multi-device Users", value: fmtNum(data.totals.multi_device_users) },
         { label: "Blocked Users", value: fmtNum(data.totals.blocked_users) },
         { label: "Suspicious Activity", value: fmtNum(data.suspicious_activity) },
+        { label: "Fraud Risk Score", value: fraud ? fmtNum(fraud.risk_score) + " / 100" : "—" },
       ]);
 
       var events = data.events_by_type || [];
       makeChart("security-events", "security-events-chart", {
         type: "bar",
-        data: { labels: events.map(function (e) { return e.event_type; }), datasets: [{ data: events.map(function (e) { return e.count; }), backgroundColor: BRAND.error, borderRadius: 8 }] },
+        data: { labels: events.map(function (e) { return humanize(e.event_type); }), datasets: [{ data: events.map(function (e) { return e.count; }), backgroundColor: BRAND.error, borderRadius: 8 }] },
         options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: chartColors().color }, grid: { display: false } }, y: { ticks: { color: chartColors().color }, grid: { color: chartColors().grid } } } },
       });
 
@@ -395,19 +425,12 @@
       makeChart("security-fraud", "security-fraud-chart", {
         type: "bar",
         data: {
-          labels: ["Fake Reports", "Bot Hits", "Rapid Swipes", "VPN Usage"],
-          datasets: [{ data: [signals.fake_profile_reports || 0, signals.bot_detection_hits || 0, signals.rapid_swipe_accounts || 0, signals.vpn_usage || 0], backgroundColor: palette(4), borderRadius: 8 }],
+          labels: ["Fake Profile Reports", "Suspicious Logins", "Rapid-swipe Accounts"],
+          datasets: [{ data: [signals.fake_profile_reports || 0, signals.bot_detection_hits || 0, signals.rapid_swipe_accounts || 0], backgroundColor: palette(3), borderRadius: 8 }],
         },
         options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: chartColors().color }, grid: { display: false } }, y: { ticks: { color: chartColors().color }, grid: { color: chartColors().grid } } } },
       });
 
-      renderTable("security-summary-table", ["Metric", "Value"], [
-        ["Failed logins", fmtNum(data.totals.failed_logins)],
-        ["Security events", fmtNum(data.totals.security_events)],
-        ["User reports", fmtNum(data.totals.user_reports)],
-        ["Fraud risk score", fraud ? fmtNum(fraud.risk_score) : "—"],
-        ["Rapid swipe accounts", fraud ? fmtNum(signals.rapid_swipe_accounts) : "—"],
-      ]);
     },
 
     loadMaps: function (data) {
@@ -437,9 +460,10 @@
         mapInstance = null;
       }
       mapInstance = L.map(mapEl, { scrollWheelZoom: false }).setView([27.7, 85.3], 7);
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-        attribution: "&copy; OpenStreetMap",
-        maxZoom: 18,
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+        className: "duo-map-tiles",
       }).addTo(mapInstance);
 
       var zones = data.heatmap_zones || [];
@@ -456,7 +480,7 @@
           weight: 1,
         }).addTo(mapInstance);
         circle.bindTooltip(
-          "<strong>" + (zone.name || "Zone") + "</strong><br>" +
+          "<strong>" + esc(zone.name || "Zone") + "</strong><br>" +
           "Score: " + (zone.score || 0) + "<br>" +
           "Active users: " + (zone.active_users || 0) + "<br>" +
           "Matches: " + (zone.matches || 0) + " · Messages: " + (zone.messages || 0),
@@ -469,42 +493,25 @@
       } else if (bounds.length > 1) {
         mapInstance.fitBounds(bounds, { padding: [36, 36], maxZoom: 11 });
       }
-      setTimeout(function () { mapInstance.invalidateSize(); }, 200);
+      setTimeout(function () { if (mapInstance) mapInstance.invalidateSize(); }, 200);
     },
 
     loadSystem: function (data) {
       if (!data) return;
       var res = data.resources || {};
       renderKpis("system-kpis", [
-        { label: "API Latency", value: data.api.response_time_ms + " ms" },
-        { label: "API Status", value: data.api.status },
-        { label: "CPU", value: res.cpu_pct + "%" },
-        { label: "Memory", value: res.memory_pct + "%" },
-        { label: "Storage", value: res.storage_usage_pct + "%" },
-        { label: "DB Engine", value: data.database.engine },
+        { label: "API Latency", value: fmtNum(data.api.response_time_ms) + " ms" },
+        { label: "API Status", value: humanize(data.api.status) },
+        { label: "CPU", value: fmtPct(res.cpu_pct) },
+        { label: "Memory", value: fmtPct(res.memory_pct) },
+        { label: "Storage", value: fmtPct(res.storage_usage_pct) },
+        { label: "DB Engine", value: humanize(data.database.engine) },
       ]);
 
       makeChart("system-resources", "system-resources-chart", {
         type: "bar",
         data: { labels: ["CPU", "Memory", "Storage"], datasets: [{ data: [res.cpu_pct, res.memory_pct, res.storage_usage_pct], backgroundColor: [BRAND.primary, BRAND.accent, BRAND.warning], borderRadius: 8 }] },
         options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: chartColors().color }, grid: { display: false } }, y: { max: 100, ticks: { color: chartColors().color }, grid: { color: chartColors().grid } } } },
-      });
-
-      makeChart("system-health", "system-health-chart", {
-        type: "doughnut",
-        data: {
-          labels: ["Database", "Cache", "Redis", "WebSocket"],
-          datasets: [{
-            data: [
-              data.database.healthy ? 1 : 0,
-              data.cache.healthy ? 1 : 0,
-              data.redis.healthy ? 1 : 0,
-              data.websocket.channels_enabled ? 1 : 0,
-            ],
-            backgroundColor: [BRAND.success, BRAND.primary, BRAND.accent, BRAND.tertiary],
-          }],
-        },
-        options: { responsive: true, plugins: { legend: { position: "bottom", labels: { color: chartColors().color } } } },
       });
 
       renderTable("system-status-table", ["Service", "Status", "Details"], [

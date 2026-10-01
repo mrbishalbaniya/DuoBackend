@@ -8,3 +8,4 @@ class EmailServiceConfig(AppConfig):
 
     def ready(self):
         from email_service import signals  # noqa: F401
+        from email_service import triggers  # noqa: F401  (sends templated emails on events)

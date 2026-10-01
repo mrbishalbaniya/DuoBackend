@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
     RegisterView,
     MeView,
+    UsernameUpdateView,
     GoogleAuthView,
     GoogleOAuthCallbackView,
     EmailOtpSendView,
@@ -39,4 +40,5 @@ urlpatterns = [
     path('handoff/create/', AuthHandoffCreateView.as_view(), name='auth_handoff_create'),
     path('handoff/exchange/', AuthHandoffExchangeView.as_view(), name='auth_handoff_exchange'),
     path('me/', MeView.as_view(), name='me'),
+    path('me/username/', UsernameUpdateView.as_view(), name='me_username'),
 ]

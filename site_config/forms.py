@@ -12,6 +12,8 @@ SECRET_FIELDS = (
     "google_client_secret",
     "email_host_password",
     "esewa_secret_key",
+    "stripe_secret_key",
+    "stripe_webhook_secret",
     "cloudinary_api_secret",
     "openweather_api_key",
     "firebase_service_account_json",

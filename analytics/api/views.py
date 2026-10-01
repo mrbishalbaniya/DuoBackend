@@ -47,6 +47,13 @@ from analytics.services.base import DateRange
 from analytics.services.users.analytics import get_user_analytics
 
 
+# Session first: the analytics pages run inside Django admin. On a shared host the
+# browser may also carry the Duo app's ``duo_access`` cookie for a different,
+# non-staff user; checking it first made every analytics call return 403.
+# API clients without an admin session still authenticate with their JWT.
+ANALYTICS_AUTHENTICATION = [SessionAuthentication, CookieJWTAuthentication]
+
+
 def _log_access(request, action: str, resource_type: str = "", resource_id: str = ""):
     AnalyticsAuditLog.objects.create(
         user=request.user if request.user.is_authenticated else None,
@@ -58,7 +65,7 @@ def _log_access(request, action: str, resource_type: str = "", resource_id: str 
 
 
 class BaseAnalyticsView(APIView):
-    authentication_classes = [CookieJWTAuthentication, SessionAuthentication]
+    authentication_classes = ANALYTICS_AUTHENTICATION
     permission_classes = [IsAnalyticsUser, AnalyticsModulePermission]
     analytics_module = "dashboard"
 
@@ -178,10 +185,17 @@ class SystemAnalyticsView(BaseAnalyticsView):
 class ExportView(BaseAnalyticsView):
     analytics_module = "exports"
 
+    def perform_content_negotiation(self, request, force=False):
+        # ``?format=`` selects the export file type here, not a DRF renderer.
+        # Forcing negotiation stops DRF from answering 404 for csv/xlsx/pdf.
+        return super().perform_content_negotiation(request, force=True)
+
     def get(self, request):
         report_type = request.query_params.get("type", "executive")
         fmt = request.query_params.get("format", "json").lower()
         filters = self.get_filters(request)
+        filters.pop("format", None)
+        filters.pop("type", None)
         _log_access(request, "export_report", report_type, fmt)
         exporters = {
             "json": export_json,
@@ -204,7 +218,7 @@ class ReportPreviewView(BaseAnalyticsView):
 
 
 class AnalyticsEventListView(generics.ListAPIView):
-    authentication_classes = [CookieJWTAuthentication, SessionAuthentication]
+    authentication_classes = ANALYTICS_AUTHENTICATION
     permission_classes = [IsAnalyticsUser, AnalyticsModulePermission]
     analytics_module = "behavior"
     serializer_class = AnalyticsEventSerializer
@@ -221,7 +235,7 @@ class AnalyticsEventListView(generics.ListAPIView):
 
 
 class SavedDashboardListCreateView(generics.ListCreateAPIView):
-    authentication_classes = [CookieJWTAuthentication, SessionAuthentication]
+    authentication_classes = ANALYTICS_AUTHENTICATION
     permission_classes = [IsAnalyticsUser]
     serializer_class = SavedDashboardSerializer
 
@@ -234,7 +248,7 @@ class SavedDashboardListCreateView(generics.ListCreateAPIView):
 
 
 class SavedReportListCreateView(generics.ListCreateAPIView):
-    authentication_classes = [CookieJWTAuthentication, SessionAuthentication]
+    authentication_classes = ANALYTICS_AUTHENTICATION
     permission_classes = [IsAnalyticsUser]
     serializer_class = SavedReportSerializer
 
@@ -246,7 +260,7 @@ class SavedReportListCreateView(generics.ListCreateAPIView):
 
 
 class DailySnapshotListView(generics.ListAPIView):
-    authentication_classes = [CookieJWTAuthentication, SessionAuthentication]
+    authentication_classes = ANALYTICS_AUTHENTICATION
     permission_classes = [IsAnalyticsUser, AnalyticsModulePermission]
     analytics_module = "dashboard"
     serializer_class = DailyMetricSnapshotSerializer

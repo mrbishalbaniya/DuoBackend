@@ -209,14 +209,7 @@ def wrap_html_body(
             <td bgcolor="{t['surface']}" style="background:{t['surface']};border:1px solid {t['border']};border-radius:24px;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td style="padding:36px 36px 0;">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
-                      <td width="48" height="4" bgcolor="{color}" style="width:48px;height:4px;line-height:4px;font-size:4px;background:{color};background-image:{t['gradient']};border-radius:999px;">&nbsp;</td>
-                    </tr></table>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:22px 36px 36px;color:{t['text']};font-family:{t['font_body']};font-size:16px;line-height:26px;">
+                  <td style="padding:36px 36px 36px;color:{t['text']};font-family:{t['font_body']};font-size:16px;line-height:26px;">
                     {inner_html}
                   </td>
                 </tr>

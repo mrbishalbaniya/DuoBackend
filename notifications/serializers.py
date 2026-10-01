@@ -27,6 +27,12 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             "payment_enabled",
             "sound_enabled",
             "vibration_enabled",
+            "email_enabled",
+            "email_matches",
+            "email_payments",
+            "email_verification",
+            "email_announcements",
+            "email_marketing",
         )
 
 

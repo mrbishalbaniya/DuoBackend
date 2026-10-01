@@ -100,7 +100,7 @@ def _build_executive_dashboard(filters: dict) -> dict:
     avg_session = LoginHistory.objects.filter(success=True, created_at__gte=m_start).aggregate(
         avg=Avg("id")
     )
-    session_duration_min = 8.5
+    session_duration_min = None  # no session tracking yet; do not report a made-up value
 
     msg_stats = Message.objects.aggregate(
         total=Count("id"),

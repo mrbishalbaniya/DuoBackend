@@ -448,3 +448,62 @@ class LikeQuotaTests(TestCase):
         self.assertEqual(data["limit"], 3)
         self.assertEqual(data["likes_remaining"], 2)
         self.assertEqual(data["window_hours"], 12)
+
+
+class LayeredDiscoveryTests(TestCase):
+    """Registration data > match filters > /preferences (see scoring.py)."""
+
+    def _profile(self, username, **fields):
+        from django.contrib.auth import get_user_model
+
+        from accounts.models import Profile
+
+        user = get_user_model().objects.create_user(
+            username=username, email=f"{username}@example.com", password="StrongPass!234"
+        )
+        profile, _ = Profile.objects.get_or_create(user=user)
+        defaults = dict(
+            full_name=username, age=26, gender="F", location="Kathmandu, Nepal",
+            is_onboarded=True, pref_age_min=20, pref_age_max=40, pref_gender="everyone",
+            pref_relationship_goal="everyone", pref_max_distance_km=100,
+        )
+        defaults.update(fields)
+        for key, value in defaults.items():
+            setattr(profile, key, value)
+        profile.save()
+        return profile
+
+    def test_mutual_gender_interest_is_required(self):
+        from matching.recommendation.scoring import is_mutual_gender_interest
+
+        viewer = self._profile("viewer.m", gender="M", pref_gender="women")
+        wants_men = self._profile("cand.a", pref_gender="men")
+        wants_women = self._profile("cand.b", pref_gender="women")
+        self.assertTrue(is_mutual_gender_interest(viewer, wants_men))
+        self.assertFalse(is_mutual_gender_interest(viewer, wants_women))
+
+    def test_registration_goal_orders_feed_when_no_goal_filter(self):
+        from matching.recommendation.engine import discover_profiles
+
+        viewer = self._profile("viewer.g", gender="M", relationship_goal="serious")
+        self._profile("cand.serious", relationship_goal="serious")
+        self._profile("cand.casual", relationship_goal="casual")
+        names = [p.full_name for p in discover_profiles(viewer.user).profiles]
+        self.assertLess(names.index("cand.serious"), names.index("cand.casual"))
+
+    def test_profile_compat_outweighs_preferences(self):
+        from matching.recommendation.scoring import _profile_compatibility_score, _soft_preference_score
+        import json
+
+        viewer = self._profile(
+            "viewer.c", gender="M", relationship_goal="serious",
+            pref_values=json.dumps({"preferredInterests": ["music", "travel", "art"], "languages": ["Nepali"]}),
+            lifestyle_tags=["Music"],
+        )
+        cand = self._profile(
+            "cand.c", relationship_goal="serious",
+            pref_values=json.dumps({"languages": ["Nepali"]}), lifestyle_tags=["Music", "Travel", "Art"],
+        )
+        compat = _profile_compatibility_score(viewer, cand, goal_filter_set=False)
+        prefs = _soft_preference_score(viewer, cand)
+        self.assertGreater(compat, prefs)

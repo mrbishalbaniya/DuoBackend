@@ -162,16 +162,17 @@ def backfill_conversation_last_message_at() -> None:
 def _actor_display_name(user: User) -> str:
     profile = getattr(user, "profile", None)
     name = (getattr(profile, "full_name", None) or "").strip()
-    return name or user.username or "Someone"
+    # First name only ("Bishal took a screenshot"), matching the apps.
+    return (name.split()[0] if name else "") or user.username or "Someone"
 
 
 def format_security_event_content(actor_name: str, event_code: str) -> str:
     if event_code == SECURITY_EVENT_SCREENSHOT:
-        return f"📸 {actor_name} took a screenshot."
+        return f"{actor_name} took a screenshot."
     if event_code == SECURITY_EVENT_RECORDING_STARTED:
-        return f"🎥 {actor_name} started screen recording."
+        return f"{actor_name} screen recorded the chat."
     if event_code == SECURITY_EVENT_RECORDING_STOPPED:
-        return f"🎥 {actor_name} stopped screen recording."
+        return f"{actor_name} stopped screen recording."
     return f"{actor_name} triggered a security event."
 
 

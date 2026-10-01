@@ -60,7 +60,7 @@ PORTAL_MENU_GROUPS = [
     {
         "id": "verification",
         "label": "Verification",
-        "icon": "fas fa-shield-check",
+        "icon": "fas fa-user-shield",
         "apps": ["photo_verification"],
     },
     {

@@ -9,4 +9,5 @@ if (-not (Test-Path $Python)) {
 }
 
 Set-Location $Root
-& $Python manage.py runserver 8000
+# 0.0.0.0 lets a phone on the same Wi-Fi reach this PC; localhost:8000 still works.
+& $Python manage.py runserver 0.0.0.0:8000

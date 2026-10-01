@@ -352,6 +352,19 @@ def _matched_user_ids(user):
     return get_matched_user_ids(user)
 
 
+def _match_conversations(user) -> dict[int, str]:
+    """other_user_id -> public conversation id, for every match of ``user``."""
+    from chat.models import Conversation
+
+    out: dict[int, str] = {}
+    rows = Conversation.objects.filter(Q(match__user1=user) | Q(match__user2=user)).values_list(
+        "public_id", "match__user1_id", "match__user2_id"
+    )
+    for public_id, u1, u2 in rows:
+        out[u2 if u1 == user.id else u1] = public_id
+    return out
+
+
 class MatchListView(APIView):
     """List all matches for the current user."""
 
@@ -368,7 +381,7 @@ class MatchListView(APIView):
         def build():
             matches = apply_list_window(
                 Match.objects.filter(Q(user1=request.user) | Q(user2=request.user))
-                .select_related("user1__profile", "user2__profile")
+                .select_related("user1__profile", "user2__profile", "conversation")
                 .order_by("-matched_at"),
                 request,
                 default_limit=200,
@@ -402,6 +415,7 @@ class LikedByYouView(APIView):
         cache_key = cache_keys.liked_by_you(request.user.id, version, limit, offset)
 
         def build():
+            # Only pending likes; matches are listed on the Matched tab.
             matched_ids = _matched_user_ids(request.user)
             swipes = apply_list_window(
                 Swipe.objects.filter(
@@ -416,11 +430,9 @@ class LikedByYouView(APIView):
                 max_limit=500,
             )
             profiles = profiles_from_swipes(swipes, request.user)
-            return LikedProfileSerializer(
-                swipes,
-                many=True,
-                context=matching_list_context(request, profiles),
-            ).data
+            context = matching_list_context(request, profiles)
+            context["match_conversations"] = _match_conversations(request.user)
+            return LikedProfileSerializer(swipes, many=True, context=context).data
 
         return Response(
             api_cache.get_or_set(cache_key, build, cache_ttl.LIKES_OUT, label="liked_by_you")
@@ -447,13 +459,14 @@ class LikesYouView(APIView):
                 action__in=['LIKE', 'SUPERLIKE'],
             ).values_list('to_user_id', flat=True)
 
+            # Pending likes plus people you already matched with (liked back
+            # without a match yet is excluded: nothing left to do there).
             swipes = apply_list_window(
                 Swipe.objects.filter(
                     to_user=request.user,
                     action__in=['LIKE', 'SUPERLIKE'],
                 )
-                .exclude(from_user_id__in=matched_ids)
-                .exclude(from_user_id__in=liked_back_ids)
+                .exclude(Q(from_user_id__in=liked_back_ids) & ~Q(from_user_id__in=matched_ids))
                 .select_related('from_user__profile')
                 .order_by('-created_at'),
                 request,
@@ -463,16 +476,19 @@ class LikesYouView(APIView):
 
             is_premium = user_has_active_subscription(request.user, FEATURE_WHO_LIKED_YOU)
             profiles = profiles_from_swipes(swipes, request.user)
-            results = LikedProfileSerializer(
-                swipes,
-                many=True,
-                context=matching_list_context(request, profiles, locked=not is_premium),
-            ).data
+            context = matching_list_context(request, profiles, locked=not is_premium)
+            context["match_conversations"] = _match_conversations(request.user)
+            results = LikedProfileSerializer(swipes, many=True, context=context).data
 
+            pending = [item for item in results if item.get('status') != 'matched']
             if not is_premium:
+                # Like "Visited you": without the pass every card is locked,
+                # matches included (no name, status or chat link leaks).
                 for item in results:
                     original = item.get('profile') or {}
                     item['locked'] = True
+                    item['status'] = None
+                    item['conversation_id'] = None
                     item['profile'] = mask_profile_for_paywall(
                         original,
                         swipe_id=item.get('swipe_id'),
@@ -482,6 +498,7 @@ class LikesYouView(APIView):
                 'is_premium': is_premium,
                 'premium_required': not is_premium and len(results) > 0,
                 'count': len(results),
+                'pending_count': len(pending) if is_premium else None,
                 'results': results,
             }
 
@@ -600,19 +617,23 @@ class MatchInsightView(RetrieveAPIView):
         return context
 
     def retrieve(self, request, *args, **kwargs):
+        from matching.ai_insights import get_match_insights
+
         match = self.get_object()
-        cache_key = cache_keys.match_insight(match.id, request.user.id)
+        force = request.query_params.get("refresh") in {"1", "true"}
+        # Scores are recomputed from the profiles and the AI text is stored on
+        # the match (regenerated only when inputs change), so no response cache.
+        insights = get_match_insights(match, force=force)
+        insights["ai_provider"] = "claude" if insights.get("ai_generated") else None
+        if not insights.get("ai_generated"):
+            # Duo's own trained model (matching/ml); None until one is trained.
+            from matching.ml.insights import local_insights
 
-        def build():
-            other_profile = match.get_other_user(request.user).profile
-            context = super().get_serializer_context()
-            context.update(matching_list_context(request, [other_profile]))
-            return MatchSerializer(match, context=context).data
-
-        data = api_cache.get_or_set(
-            cache_key,
-            build,
-            cache_ttl.MATCH_INSIGHT,
-            label="match_insight",
-        )
+            local = local_insights(match, request.user)
+            if local:
+                insights.update(local)
+                insights["ai_generated"] = True
+                insights["ai_provider"] = "duo"
+        data = MatchSerializer(match, context=self.get_serializer_context()).data
+        data.update(insights)
         return Response(data)

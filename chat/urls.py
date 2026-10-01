@@ -16,6 +16,7 @@ from .views import (
     ConversationUnmatchBlockView,
     ConversationReportView,
     ConversationSecurityEventView,
+    ConversationMediaView,
     UnblockUserView,
     WebSocketTicketView,
 )
@@ -35,6 +36,7 @@ urlpatterns = [
     path('conversations/<str:conversation_id>/unmatch-and-block/', ConversationUnmatchBlockView.as_view(), name='conversation_unmatch_block'),
     path('conversations/<str:conversation_id>/report/', ConversationReportView.as_view(), name='conversation_report'),
     path('conversations/<str:conversation_id>/messages/', MessageListView.as_view(), name='messages'),
+    path('conversations/<str:conversation_id>/media/', ConversationMediaView.as_view(), name='conversation_media'),
     path('conversations/<str:conversation_id>/typing/', TypingHeartbeatView.as_view(), name='typing_heartbeat'),
     path('conversations/<str:conversation_id>/ws-ticket/', WebSocketTicketView.as_view(), name='ws_ticket'),
     path('messages/<int:message_id>/delete/', MessageDeleteView.as_view(), name='message_delete'),

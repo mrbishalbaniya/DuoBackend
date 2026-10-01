@@ -1,3 +1,4 @@
+from django.http import HttpResponseRedirect
 import logging
 import secrets
 
@@ -114,6 +115,25 @@ class MeView(APIView):
         return Response(data)
 
 
+class UsernameUpdateView(APIView):
+    """Let a signed-in person change their username at any time."""
+
+    @extend_schema(tags=["Authentication"], summary="Change the current user's username")
+    def patch(self, request):
+        from .serializers import UsernameUpdateSerializer
+
+        serializer = UsernameUpdateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        user = request.user
+        user.username = serializer.validated_data["username"]
+        user.save(update_fields=["username"])
+        invalidate_user_caches(user.id, reason="username_update")
+        profile = getattr(user, "profile", None)
+        if profile is not None:
+            invalidate_profile_caches(profile.id, user.id, reason="username_update")
+        return Response(UserSerializer(user).data)
+
+
 class GoogleAuthView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_classes = [AuthRateThrottle]
@@ -157,6 +177,15 @@ class GoogleAuthView(APIView):
         return response
 
 
+MOBILE_OAUTH_SCHEME = "com.duo.duomobile"
+
+
+class MobileAppRedirect(HttpResponseRedirect):
+    """Redirect back into the Android app. Django only allows http/https/ftp by default."""
+
+    allowed_schemes = ["http", "https", MOBILE_OAUTH_SCHEME]
+
+
 class GoogleOAuthCallbackView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_classes = [AuthRateThrottle]
@@ -172,7 +201,7 @@ class GoogleOAuthCallbackView(APIView):
                 params = urlencode({"error": error or "access_denied"})
             else:
                 params = urlencode({"code": code})
-            return redirect(f"com.duo.duo_mobile://oauth2redirect?{params}")
+            return MobileAppRedirect(f"{MOBILE_OAUTH_SCHEME}://oauth2redirect?{params}")
 
         if error or not code:
             return redirect(login_error_url)
@@ -330,7 +359,7 @@ class PasswordForgotView(APIView):
         # Google-created accounts have no usable password yet; a reset code is
         # how they set one (PasswordChangeView points them here), so send it
         # to any active account.
-        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        user = User.objects.filter(email__iexact=email, is_active=True).order_by("-profile__is_onboarded", "-last_login", "-id").first()
         if user:
             try:
                 send_password_reset_otp(email)
@@ -376,7 +405,7 @@ class PasswordResetView(APIView):
         otp = serializer.validated_data["otp"].strip()
         password = serializer.validated_data["password"]
 
-        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        user = User.objects.filter(email__iexact=email, is_active=True).order_by("-profile__is_onboarded", "-last_login", "-id").first()
         if not user:
             return Response(
                 {"detail": "Invalid or expired reset code."},
@@ -431,7 +460,7 @@ class LoginOtpRequestView(APIView):
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
 
-        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        user = User.objects.filter(email__iexact=email, is_active=True).order_by("-profile__is_onboarded", "-last_login", "-id").first()
         if user:
             try:
                 send_login_otp(email)
@@ -474,7 +503,7 @@ class LoginOtpVerifyView(APIView):
         email = serializer.validated_data["email"].strip().lower()
         otp = serializer.validated_data["otp"].strip()
 
-        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        user = User.objects.filter(email__iexact=email, is_active=True).order_by("-profile__is_onboarded", "-last_login", "-id").first()
         if not user or not verify_login_otp(email, otp):
             return Response(
                 {"detail": "Invalid or expired code."},
@@ -821,3 +850,29 @@ class ProfileVisitRecordView(APIView):
 
         record_profile_visit(request.user, profile.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ProfileWritingSuggestionsView(APIView):
+    """Bio / Looking for / Future goals suggestions from Duo's own writing assistant."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        tags=["Profiles"],
+        summary="Suggest About-section text from profile data",
+        responses={200: OpenApiResponse(description='{"suggestions": [...], "based_on": [...]}')},
+    )
+    def post(self, request):
+        from accounts.writing_assistant import FIELDS, suggest
+
+        field = str(request.data.get("field") or "")
+        if field not in FIELDS:
+            return Response({"detail": f"field must be one of {', '.join(FIELDS)}."}, status=status.HTTP_400_BAD_REQUEST)
+        draft = request.data.get("draft") or {}
+        if not isinstance(draft, dict):
+            return Response({"detail": "draft must be an object."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            variant = max(0, min(int(request.data.get("variant") or 0), 1000))
+        except (TypeError, ValueError):
+            variant = 0
+        return Response(suggest(field, draft, variant=variant, user_id=request.user.id))

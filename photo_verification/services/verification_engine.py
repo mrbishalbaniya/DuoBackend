@@ -9,6 +9,12 @@ from datetime import timedelta
 from django.utils import timezone
 
 from accounts.models import Profile
+
+
+def _email_verified(user) -> None:
+    from email_service.triggers import send_verified_email
+
+    send_verified_email(user)
 from photo_verification.constants import (
     FRAUD_REJECT,
     FRAUD_REVIEW,
@@ -26,6 +32,11 @@ from photo_verification.services.embedding_pipeline import (
 from photo_verification.services.face_matching import match_selfie_to_profile_embeddings
 from photo_verification.services.fraud_detection import detect_verification_fraud
 from photo_verification.services.image_utils import load_image_from_bytes
+from photo_verification.services.liveness_session import (
+    identity_check,
+    selfie_too_late,
+    session_steps,
+)
 from photo_verification.services.liveness_detection import (
     aggregate_liveness_score,
     all_liveness_steps_passed,
@@ -106,9 +117,19 @@ class VerificationEngine:
         if analysis["blur_score"] < 50:
             rejection_reasons.append("Selfie is too blurry.")
 
-        liveness_score = aggregate_liveness_score(session.liveness_data or {})
-        if not all_liveness_steps_passed(session.liveness_data or {}):
+        liveness_data = session.liveness_data or {}
+        steps = session_steps(liveness_data) or None
+        liveness_score = aggregate_liveness_score(liveness_data, steps)
+        if not all_liveness_steps_passed(liveness_data, steps):
             rejection_reasons.append("Liveness challenges not completed.")
+        if selfie_too_late(liveness_data):
+            rejection_reasons.append("Selfie must be taken right after the face challenges.")
+
+        same_person, _, identity_reason = identity_check(
+            liveness_data, analysis["embedding"], analysis["embedding_detector"]
+        )
+        if not same_person:
+            rejection_reasons.append(identity_reason)
 
         fraud_probability = max(
             float(analysis["fraud_probability"]),
@@ -146,6 +167,7 @@ class VerificationEngine:
         if verified_badge:
             session.verified_at = timezone.now()
             Profile.objects.filter(user=session.user).update(is_verified=True)
+            _email_verified(session.user)
             from duo_project.realtime.broadcast import broadcast_profile_verified
 
             broadcast_profile_verified(user_id=session.user_id)
@@ -218,6 +240,7 @@ class VerificationEngine:
         session.review_notes = notes
         session.save(update_fields=["verification_status", "verified_at", "review_notes", "updated_at"])
         Profile.objects.filter(user=session.user).update(is_verified=True)
+        _email_verified(session.user)
         from duo_project.realtime.broadcast import broadcast_profile_verified
 
         broadcast_profile_verified(user_id=session.user_id)

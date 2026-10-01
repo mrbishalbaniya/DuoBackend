@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
+from .english_places import to_english
 from .models import Profile
 from subscriptions.services import get_active_subscription, user_has_active_subscription
 from subscriptions.wallet_services import get_wallet_balance
@@ -18,11 +19,41 @@ MIN_PROFILE_PHOTOS = 1
 MAX_PROFILE_PHOTOS = 3
 
 
+# Keys of Profile.pref_values that other people may see on a profile. Everything
+# else (exact date of birth, birth time/place, gotra, sub-caste, income, partner
+# preferences) stays private to the owner, as on major dating / matrimonial apps.
+PUBLIC_PREF_KEYS = (
+    "height",
+    "educationLevel",
+    "fieldOfStudy",
+    "company",
+    "caste",
+    "horoscope",
+    "languages",
+    "lookingForText",
+    "futureGoals",
+)
+
+
+def public_pref_values(raw: str) -> str:
+    import json
+
+    try:
+        data = json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    public = {key: data[key] for key in PUBLIC_PREF_KEYS if data.get(key) not in (None, "", [])}
+    return json.dumps(public) if public else ""
+
+
 class ProfileSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source="user.id", read_only=True)
     username = serializers.CharField(source="user.username", read_only=True)
     email = serializers.EmailField(source="user.email", read_only=True)
     profile_completeness = serializers.IntegerField(read_only=True)
+    profile_checklist = serializers.SerializerMethodField()
     is_premium = serializers.SerializerMethodField()
     subscription_expires_at = serializers.SerializerMethodField()
     wallet_balance = serializers.SerializerMethodField()
@@ -74,6 +105,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "app_language",
             "app_region",
             "profile_completeness",
+            "profile_checklist",
             "is_premium",
             "subscription_expires_at",
             "wallet_balance",
@@ -100,7 +132,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         owner_id = getattr(instance, "user_id", None) or getattr(
             getattr(instance, "user", None), "id", None
         )
-        is_owner = (
+        is_owner = bool(self.context.get("owner_view")) or (
             viewer is not None
             and getattr(viewer, "is_authenticated", False)
             and owner_id is not None
@@ -116,6 +148,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             data["email"] = ""
             data["phone_country_code"] = ""
             data["phone_number"] = ""
+            data.pop("profile_checklist", None)
+            data["pref_values"] = public_pref_values(instance.pref_values)
             if viewer is not None and not instance.is_location_visible_to(viewer):
                 data["location"] = ""
         return data
@@ -134,6 +168,9 @@ class ProfileSerializer(serializers.ModelSerializer):
         if raw < 100:
             return int(round(raw))
         return int(round(raw / 10.0) * 10)
+
+    def get_profile_checklist(self, obj):
+        return obj.profile_checklist()
 
     def get_is_premium(self, obj):
         billing = self.context.get("profile_billing")
@@ -205,7 +242,11 @@ class ProfileSerializer(serializers.ModelSerializer):
                 )
 
         if "pref_location" in attrs:
-            attrs["pref_location"] = (attrs["pref_location"] or "").strip()[:200]
+            attrs["pref_location"] = to_english((attrs["pref_location"] or "").strip())[:200]
+
+    def validate_location(self, value):
+        # Store place names in English only (never Devanagari).
+        return to_english((value or "").strip())[:200] or value
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -332,11 +373,24 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    profile = ProfileSerializer(read_only=True)
+    """The signed-in user's own account (me, login, register, username change).
+
+    The nested profile is always the owner's view: without this, the profile's
+    privacy rules saw no request user and blanked the owner's own phone number
+    and private details, so edits looked unsaved on the account page.
+    """
+
+    profile = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = ["id", "username", "email", "profile"]
+
+    def get_profile(self, obj):
+        profile = getattr(obj, "profile", None)
+        if profile is None:
+            return None
+        return ProfileSerializer(profile, context={**self.context, "owner_view": True}).data
 
 
 class GoogleAuthSerializer(serializers.Serializer):
@@ -415,22 +469,42 @@ class RegisterSerializer(serializers.ModelSerializer):
         username = (validated_data.pop("username", None) or "").strip()
         email = validated_data["email"]
 
-        if not username:
-            username = email
+        from accounts.usernames import generate_username, validate_username
 
-        base_username = username
-        suffix = 1
-        while User.objects.filter(username=username).exists():
-            username = f"{base_username}_{suffix}"
-            suffix += 1
+        if username and "@" not in username:
+            try:
+                username = validate_username(username)
+            except serializers.ValidationError:
+                username = generate_username(full_name or username, email)
+        else:
+            username = generate_username(full_name, email)
 
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=validated_data["password"],
-        )
+        from accounts.signup_lock import email_signup_lock
+
+        with email_signup_lock(email):
+            # Re-check inside the lock: a second, simultaneous request for the
+            # same email must not create a duplicate account.
+            if User.objects.filter(email__iexact=email).exists():
+                raise serializers.ValidationError(
+                    {"email": ["An account with this email already exists. Sign in instead."]}
+                )
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=validated_data["password"],
+            )
         profile, _ = Profile.objects.get_or_create(user=user)
         if full_name:
             profile.full_name = full_name
             profile.save(update_fields=["full_name", "updated_at"])
         return user
+
+
+class UsernameUpdateSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=64)
+
+    def validate_username(self, value):
+        from accounts.usernames import validate_username
+
+        user = self.context["request"].user
+        return validate_username(value, exclude_user_id=user.pk)

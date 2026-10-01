@@ -84,16 +84,29 @@ def get_or_create_google_user(idinfo: dict):
     first_name = (idinfo.get("given_name") or "").strip()
     last_name = (idinfo.get("family_name") or "").strip()
 
-    user = User.objects.filter(email__iexact=email).order_by("id").first()
+    from accounts.signup_lock import email_signup_lock
+
+    with email_signup_lock(email):
+        return _get_or_create_google_user_locked(
+            email, full_name, first_name, last_name
+        )
+
+
+def _get_or_create_google_user_locked(email, full_name, first_name, last_name):
+    # Prefer the finished account when old duplicates share this email.
+    user = (
+        User.objects.filter(email__iexact=email)
+        .order_by("-profile__is_onboarded", "-last_login", "id")
+        .first()
+    )
     created = False
 
     if user is None:
-        username = email
-        base_username = username
-        counter = 1
-        while User.objects.filter(username=username).exists():
-            username = f"{base_username}_{counter}"
-            counter += 1
+        from accounts.usernames import generate_username
+
+        username = generate_username(
+            full_name or f"{first_name} {last_name}".strip(), email
+        )
 
         user = User.objects.create(
             username=username,

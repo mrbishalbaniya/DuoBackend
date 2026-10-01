@@ -105,7 +105,20 @@ class VerificationStatus(str, Enum):
     UNDER_REVIEW = "UNDER_REVIEW"
 
 
-LIVENESS_STEPS = ("smile", "blink")
+# Every challenge the liveness checker supports. Each session gets a random
+# subset in random order (see services/liveness_session.py).
+LIVENESS_STEP_POOL = ("smile", "blink", "head_left", "head_right")
+LIVENESS_STEPS = LIVENESS_STEP_POOL  # accepted step names
+LIVENESS_STEPS_PER_SESSION = 3
+
+# Challenges must be done in one sitting, and the selfie right after.
+LIVENESS_MAX_DURATION_SECONDS = 180
+SELFIE_MAX_DELAY_SECONDS = 120
+
+# Cosine similarity the selfie must reach against every liveness frame
+# (InsightFace). Live frames of one person score far above this; different
+# people land well below it.
+SAME_PERSON_MIN_SIMILARITY = 0.45
 
 # Cosine similarity thresholds
 SIMILARITY_VERIFIED = 0.80
