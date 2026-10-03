@@ -116,6 +116,7 @@ class ConversationSerializer(serializers.ModelSerializer):
     is_muted = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
     notify_screenshots = serializers.SerializerMethodField()
+    filter_offensive = serializers.SerializerMethodField()
     secure_chat = serializers.SerializerMethodField()
 
     class Meta:
@@ -136,6 +137,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             'is_muted',
             'is_pinned',
             'notify_screenshots',
+            'filter_offensive',
             'secure_chat',
         ]
 
@@ -217,6 +219,10 @@ class ConversationSerializer(serializers.ModelSerializer):
     def get_notify_screenshots(self, obj):
         pref = self._get_user_pref(obj)
         return bool(pref.notify_screenshots) if pref else True
+
+    def get_filter_offensive(self, obj):
+        pref = self._get_user_pref(obj)
+        return bool(pref.filter_offensive) if pref else True
 
     def get_secure_chat(self, obj):
         pref = self._get_user_pref(obj)

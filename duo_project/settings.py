@@ -571,6 +571,11 @@ REQUIRE_EMAIL_OTP_FOR_REGISTRATION = config(
     cast=bool,
 )
 
+# Chat text moderation (duo_project/security/text_moderation.py). Messages whose
+# worst match is at or above this severity (LOW / MEDIUM / HIGH) are rejected.
+CHAT_MODERATION_ENABLED = config("CHAT_MODERATION_ENABLED", default=True, cast=bool)
+CHAT_MODERATION_BLOCK_SEVERITY = config("CHAT_MODERATION_BLOCK_SEVERITY", default="MEDIUM")
+
 TRUSTED_MEDIA_HOSTS = env("TRUSTED_MEDIA_HOSTS", default="")
 
 REST_FRAMEWORK = {

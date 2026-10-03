@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from duo_project.security.text_moderation import RELAXABLE_CATEGORIES, enforce_clean_text
+
 from django.contrib.auth.models import User
 from django.db.models import Max
 from django.utils import timezone
@@ -111,6 +113,13 @@ def edit_message(message: Message, user: User, content: str) -> Message | None:
     cleaned = sanitize_message_content(content)
     if not cleaned:
         return None
+    # Edits must not smuggle in text that a new message would be refused for.
+    enforce_clean_text(
+        cleaned,
+        user_id=user.id,
+        source="chat_edit",
+        ignore=moderation_relaxed_categories(message.conversation, user),
+    )
     message.content = cleaned
     message.edited_at = timezone.now()
     message.save(update_fields=["content", "edited_at"])
@@ -174,6 +183,21 @@ def format_security_event_content(actor_name: str, event_code: str) -> str:
     if event_code == SECURITY_EVENT_RECORDING_STOPPED:
         return f"{actor_name} stopped screen recording."
     return f"{actor_name} triggered a security event."
+
+
+def moderation_relaxed_categories(convo: Conversation, sender: User) -> frozenset:
+    """Categories the RECEIVER chose to allow in this chat (their own setting).
+
+    Only profanity/insults can be relaxed; threats, harassment, sexual
+    harassment and hate are never relaxed. A sender can never change this.
+    """
+    receiver = convo.get_other_user(sender)
+    pref = ConversationPreference.objects.filter(conversation=convo, user=receiver).only(
+        "filter_offensive"
+    ).first()
+    if pref is None or pref.filter_offensive:
+        return frozenset()
+    return RELAXABLE_CATEGORIES
 
 
 def user_notify_screenshots_enabled(convo: Conversation, user: User) -> bool:

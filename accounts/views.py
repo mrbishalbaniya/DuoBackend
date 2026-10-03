@@ -162,6 +162,7 @@ class GoogleAuthView(APIView):
             idinfo = verify_google_id_token(id_token)
             user, _created = get_or_create_google_user(idinfo)
         except (ValueError, GoogleAuthError) as exc:
+            logger.warning("Google sign-in rejected: %s", exc)
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         refresh = RefreshToken.for_user(user)

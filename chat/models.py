@@ -49,6 +49,9 @@ class ConversationPreference(models.Model):
     is_pinned = models.BooleanField(default=False)
     notify_screenshots = models.BooleanField(default=True)
     secure_chat = models.BooleanField(default=False)
+    # Receiver-side: hide profanity/insults sent to this user in this chat.
+    # Threats, harassment, sexual harassment and hate are always blocked.
+    filter_offensive = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

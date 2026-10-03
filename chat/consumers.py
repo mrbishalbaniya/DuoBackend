@@ -4,14 +4,22 @@ import logging
 
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 
 from duo_project.realtime.groups import chat_room, user_inbox
 from duo_project.realtime.presence import mark_active
 from duo_project.realtime.registry import register_connection, touch_connection, unregister_connection
 from duo_project.realtime.throttle import allow_event
+from duo_project.security.text_moderation import (
+    INAPPROPRIATE_CODE,
+    INAPPROPRIATE_MESSAGE,
+    InappropriateContent,
+    moderate_text,
+)
 from .models import Conversation, Message
 from .services import (
+    moderation_relaxed_categories,
     conversation_is_blocked,
     create_security_system_message,
     delete_message_for_user,
@@ -25,6 +33,7 @@ from .services import (
 )
 
 logger = logging.getLogger("duo.realtime")
+User = get_user_model()
 
 HEARTBEAT_INTERVAL = 30
 
@@ -104,8 +113,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 image_url,
                 reply_to_id=reply_to_id,
             )
+            if saved_msg and saved_msg.get("blocked"):
+                await self._send_error(
+                    INAPPROPRIATE_CODE, INAPPROPRIATE_MESSAGE, client_temp_id=client_temp_id
+                )
+                return
             if not saved_msg:
-                await self._send_error("send_failed", "Could not send message.")
+                await self._send_error(
+                    "send_failed", "Could not send message.", client_temp_id=client_temp_id
+                )
                 return
 
             await self.channel_layer.group_send(
@@ -138,6 +154,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message_id = data.get("id")
             content = data.get("content", "")
             edited = await self.edit_message_action(message_id, user_id, content)
+            if edited and edited.get("blocked"):
+                await self._send_error(INAPPROPRIATE_CODE, INAPPROPRIATE_MESSAGE, id=message_id)
+                return
             if edited:
                 await self.channel_layer.group_send(
                     self.room_group_name,
@@ -384,8 +403,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except asyncio.CancelledError:
             return
 
-    async def _send_error(self, code: str, message: str) -> None:
-        await self.send(text_data=json.dumps({"type": "error", "code": code, "message": message}))
+    async def _send_error(self, code: str, message: str, **extra) -> None:
+        await self.send(text_data=json.dumps({"type": "error", "code": code, "message": message, **extra}))
 
     @database_sync_to_async
     def verify_membership(self):
@@ -474,6 +493,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
             content = sanitize_message_content(content)
             if not content and not (image_url or "").strip():
                 return None
+            convo_for_mod = self._get_conversation()
+            relaxed = (
+                moderation_relaxed_categories(convo_for_mod, User.objects.get(pk=user_id))
+                if convo_for_mod
+                else frozenset()
+            )
+            verdict = moderate_text(content, ignore=relaxed)
+            if not verdict.allowed:
+                logger.info(
+                    "moderation blocked user=%s source=chat_ws category=%s severity=%s",
+                    user_id,
+                    verdict.category.value if verdict.category else "",
+                    verdict.severity.name if verdict.severity else "",
+                )
+                return {"blocked": True}
 
             if image_url and not is_allowed_media_url(image_url):
                 return None
@@ -544,7 +578,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if not self._conversation_matches(convo):
                 return None
             user = match.user1 if match.user1_id == user_id else match.user2
-            updated = edit_message(msg, user, content)
+            try:
+                updated = edit_message(msg, user, content)
+            except InappropriateContent:
+                return {"blocked": True}
             if not updated:
                 return None
             return {

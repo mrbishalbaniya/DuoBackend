@@ -1,3 +1,5 @@
+from duo_project.security.text_moderation import enforce_clean_text
+from chat.services import moderation_relaxed_categories
 from django.conf import settings
 from django.utils import timezone
 from django.core.signing import TimestampSigner
@@ -306,6 +308,13 @@ class MessageListView(APIView):
         serializer.is_valid(raise_exception=True)
 
         content = sanitize_message_content(serializer.validated_data.get('content', ''))
+        # Authoritative moderation: reject before anything is saved, broadcast or pushed.
+        enforce_clean_text(
+            content,
+            user_id=request.user.id,
+            source="chat_rest",
+            ignore=moderation_relaxed_categories(convo, request.user),
+        )
         image_url = serializer.validated_data.get('image_url', '')
         reply_to_id = serializer.validated_data.get('reply_to_id')
 
@@ -532,6 +541,9 @@ class ConversationSettingsView(APIView):
         if 'secure_chat' in request.data:
             pref.secure_chat = bool(request.data.get('secure_chat'))
             update_fields.append('secure_chat')
+        if 'filter_offensive' in request.data:
+            pref.filter_offensive = bool(request.data.get('filter_offensive'))
+            update_fields.append('filter_offensive')
 
         pref.save(update_fields=update_fields)
 
@@ -542,6 +554,7 @@ class ConversationSettingsView(APIView):
             'is_pinned': pref.is_pinned,
             'notify_screenshots': pref.notify_screenshots,
             'secure_chat': pref.secure_chat,
+            'filter_offensive': pref.filter_offensive,
         })
 
 
